@@ -82,10 +82,6 @@ def deep_knn_predict(training_data, dataset_iter, dataset, dataset_name):
     layer2_act_list = []    
     label_list = []
     for data_batch_idx, data_batch in enumerate(training_data):
-
-        if data_batch_idx > 1:
-            continue
-
         layer1_act, layer2_act = model(data_batch)
         pred = torch.max(layer1_act, 1)[1].view(data_batch.label.size()).data.cpu().numpy()        
         layer1_act = layer1_act.data.cpu()
@@ -104,8 +100,8 @@ def deep_knn_predict(training_data, dataset_iter, dataset, dataset_name):
     layer2_tree = KDTree(layer2_act_list)    
     
     # classify examples by nearest examples
-    for data_batch_idx, data_batch in enumerate(dataset_iter):        
-        if data_batch_idx > 10:
+    for data_batch_idx, data_batch in enumerate(dataset_iter): 
+        if data_batch_idx > 200:
             continue
 
         layer1_act, layer2_act = model(data_batch)
@@ -128,11 +124,12 @@ def deep_knn_predict(training_data, dataset_iter, dataset, dataset_name):
             layer2_labels.append(label_list[item])
         
         # just concat all labels?
-        predictions = layer1_labels + layer2_labels
+        predictions = layer2_labels #layer1_labels + layer2_labels
         most_common,num_most_common = Counter(predictions).most_common(1)[0]
         if most_common == data_batch.label.data.cpu().numpy():
             n_correct = n_correct + 1
             
+
     print("no. correct {} out of {}".format(n_correct, len(dataset)))
     accuracy = 100. * n_correct / len(dataset)
     print("{} accuracy: {:8.6f}%".format(dataset_name, accuracy))

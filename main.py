@@ -63,6 +63,7 @@ class Net(nn.Module):
         self.fc2 = nn.Linear(50, 10)
 
     # TODO, are the "representations" in the paper before or after non-linearities
+    # TODO, does he also consider the final layer? isn't that just the logits which will obviously break for adversarial examples?
     def forward(self, x):
         layer1_act = F.relu(F.max_pool2d(self.conv1(x), 2))
         layer2_act = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(layer1_act)), 2))

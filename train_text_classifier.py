@@ -8,6 +8,7 @@ import numpy as np
 import chainer
 from chainer import training
 from chainer.training import extensions
+import chainer.functions as F
 
 import nets
 from nlp_utils import convert_seq
@@ -22,7 +23,7 @@ def main():
         description='Chainer example: Text Classification')
     parser.add_argument('--batchsize', '-b', type=int, default=64,    
                         help='Number of images in each mini-batch')
-    parser.add_argument('--epoch', '-e', type=int, default=20,
+    parser.add_argument('--epoch', '-e', type=int, default=10,
                         help='Number of sweeps over the dataset to train')
     parser.add_argument('--gpu', '-g', type=int, default=-1,
                         help='GPU ID (negative value indicates CPU)')
@@ -34,12 +35,12 @@ def main():
                         help='Number of layers of RNN or MLP following CNN')
     parser.add_argument('--dropout', '-d', type=float, default=0.4,
                         help='Dropout rate')
-    parser.add_argument('--dataset', '-data', default='TREC',
+    parser.add_argument('--dataset', '-data', default='stsa.binary',
                         choices=['dbpedia', 'imdb.binary', 'imdb.fine',
                                  'TREC', 'stsa.binary', 'stsa.fine',
                                  'custrev', 'mpqa', 'rt-polarity', 'subj'],
                         help='Name of dataset.')
-    parser.add_argument('--model', '-model', default='rnn',
+    parser.add_argument('--model', '-model', default='cnn',
                         choices=['cnn', 'rnn', 'bow'],
                         help='Name of encoder model type.')
     parser.add_argument('--char-based', action='store_true')
@@ -148,6 +149,10 @@ def main():
     with open(os.path.join(args.out, 'args.json'), 'w') as f:
         json.dump(args.__dict__, f)
 
+    idx2word = {}   # build reverse dict
+    for word, idx in vocab.items():
+        idx2word[idx] = word
+
     # Run the training
     trainer.run()
 
@@ -174,12 +179,11 @@ def main():
                 label_list.append(model.xp.argmax(prediction.data)) # should this be predicted label or ground truth?                    
         
             # activations is (num_layers, batch_size, embed_size), make it be (batch_size, num_layers, embed_size)
-            activations = activations.reshape(activations.shape[1], activations.shape[0], activations.shape[2])                   
+            activations = F.expand_dims(activations,axis = 1)
+            #activations = activations.reshape(activations.shape[1], activations.shape[0], activations.shape[2])                   
             for activation in activations:                
                 act_list.append(activation.data)  # each entry in act_list is (num_layers, embed_size)
 
-            #for layer_num, layer_acts in enumerate(activations): # flatten each layer, and then place into master list
-                #act_list[layer_num] = layer_acts
     
     from nearpy import Engine
     from nearpy.hashes import RandomBinaryProjectionTree
@@ -189,7 +193,9 @@ def main():
     num_layers = args.layer    
     if args.model == 'cnn':  # they don't count the cnn as a layer, only the mlps
         num_layers = num_layers + 1 
-        
+       
+    num_layers = 1
+    print("WARNING NUM LAYERS NEEDS TO BE REMOVED SON!!!!") 
     for layer in range(num_layers):          
         num_dimensions = act_list[0][layer].shape[0]  # for all the layers, get the embed_size of that layer
         rbpt = RandomBinaryProjectionTree('rbpt', 75, 75)
@@ -217,7 +223,8 @@ def main():
             activations.to_cpu()
                  
             # activations is (num_layers, batch_size, embed_size), make it be (batch_size, num_layers, embed_size)
-            activations = activations.reshape(activations.shape[1], activations.shape[0], activations.shape[2])     
+            #activations = activations.reshape(activations.shape[1], activations.shape[0], activations.shape[2])     
+            activations = F.expand_dims(activations,axis = 1)
 
 
             # for each layer, get a list of the training data indices           
@@ -229,18 +236,6 @@ def main():
                     for nn in knn:
                         training_indices.append(nn[1])                                                
                     
-
-                #_, training_indices = activation_tree.query([activation], k = 75)                                                                
-                #training_indices = training_indices[0]                
-
-            
-            # layer_indices = []                    
-            #for layer_num, layer_act in activations:
-            #    indices.append(KD_Trees[layer_num].query([layer_act], k = 75))   # 75 neighbors at each layer for 75 total?
-            # TODO just concat each layer?
-            # all_indices = [item for sublist in indices for item in sublist]   # concat all training data indices together
-            
-
                 pred_labels = []
                 for training_data_index in training_indices:  # for all indices, get their label
                     pred_labels.append(label_list[training_data_index])
@@ -254,6 +249,22 @@ def main():
 
                 
                 credibility = float(num_most_common) / float(len(training_indices)) 
+
+                # print crdedibility scores and print out the sentence and all its nearest neighbors
+                #print(credibility)
+                #curr_data_input_sentence = ""
+                #for input_words in text[current_position_in_minibatch]:
+                #    curr_data_input_sentence += idx2word[input_words] + " "
+                #print("Test input", curr_data_input_sentence)
+           
+                #print("Nearest Neighbors:")
+                #for training_data_index in training_indices:
+                #    curr_nearest_neighbor_input = train[training_data_index]
+                #    curr_nearest_neighbor_input_sentence = ""
+                #    for input_words in curr_nearest_neighbor_input[0]:
+                #        curr_nearest_neighbor_input_sentence += idx2word[input_words] + " "
+                #    print(curr_nearest_neighbor_input_sentence)
+                               
 
     accuracy = float(n_correct) / float(total)
     print('Deep KNN Test Accuracy:{:.04f}'.format(accuracy))

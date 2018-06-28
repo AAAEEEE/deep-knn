@@ -17,11 +17,10 @@ from sklearn.neighbors import KDTree
 from collections import Counter
 
 
-def main():
-    current_datetime = '{}'.format(datetime.datetime.today())
+def create_parser():
     parser = argparse.ArgumentParser(
         description='Chainer example: Text Classification')
-    parser.add_argument('--batchsize', '-b', type=int, default=64,    
+    parser.add_argument('--batchsize', '-b', type=int, default=64,
                         help='Number of images in each mini-batch')
     parser.add_argument('--epoch', '-e', type=int, default=10,
                         help='Number of sweeps over the dataset to train')
@@ -44,10 +43,16 @@ def main():
                         choices=['cnn', 'rnn', 'bow'],
                         help='Name of encoder model type.')
     parser.add_argument('--char-based', action='store_true')
-    parser.add_argument('--word_vectors', default=None, help='word vector directory')
+    parser.add_argument('--word_vectors', default=None,
+                        help='word vector directory')
+    return parser
 
+
+def main():
+    parser = create_parser()
     args = parser.parse_args()
     print(json.dumps(args.__dict__, indent=2))
+    current_datetime = '{}'.format(datetime.datetime.today())
 
     # Load a dataset
     if args.dataset == 'dbpedia':
@@ -82,7 +87,7 @@ def main():
     encoder = Encoder(n_layers=args.layer, n_vocab=len(vocab),
                       n_units=args.unit, dropout=args.dropout)
     model = nets.TextClassifier(encoder, n_class)
-    
+
     # load word vectors
     if args.word_vectors:
         print("loading word vectors")
@@ -157,98 +162,98 @@ def main():
     trainer.run()
 
     # run deep knn on training data and store activations
-    act_list = []  # all the activations, layer[training data [allpoints] a list of lists of activations    
+    act_list = []  # all the activations, layer[training data [allpoints] a list of lists of activations
     label_list = []
 
     train_iter = chainer.iterators.SerialIterator(train, args.batchsize, repeat = False) # no repeat to make it easy to save all datapoints
-    train_iter.reset()                
+    train_iter.reset()
 
-    for train_batch in train_iter:       
+    for train_batch in train_iter:
         data = convert_seq(train_batch, device=args.gpu, with_label = True)
         text = data['xs']
-        labels = data['ys']    
+        labels = data['ys']
         # run forward pass of data
-        
+
         with chainer.using_config('train', False), chainer.no_backprop_mode():   # TODO, is dropout off now?
             output, activations = model.deep_knn_predict(text)
             output.to_cpu()
             activations.to_cpu()
 
             #  add predicted label to list
-            for prediction in output:                
-                label_list.append(model.xp.argmax(prediction.data)) # should this be predicted label or ground truth?                    
-        
+            for prediction in output:
+                label_list.append(model.xp.argmax(prediction.data)) # should this be predicted label or ground truth?
+
             # activations is (num_layers, batch_size, embed_size), make it be (batch_size, num_layers, embed_size)
             activations = F.expand_dims(activations,axis = 1)
-            #activations = activations.reshape(activations.shape[1], activations.shape[0], activations.shape[2])                   
-            for activation in activations:                
+            #activations = activations.reshape(activations.shape[1], activations.shape[0], activations.shape[2])
+            for activation in activations:
                 act_list.append(activation.data)  # each entry in act_list is (num_layers, embed_size)
 
-    
+
     from nearpy import Engine
     from nearpy.hashes import RandomBinaryProjectionTree
 
     tree_list = []    # there is one lookup knn tree for each layer of the network
-    
-    num_layers = args.layer    
+
+    num_layers = args.layer
     if args.model == 'cnn':  # they don't count the cnn as a layer, only the mlps
-        num_layers = num_layers + 1 
-       
+        num_layers = num_layers + 1
+
     num_layers = 1
-    print("WARNING NUM LAYERS NEEDS TO BE REMOVED SON!!!!") 
-    for layer in range(num_layers):          
+    print("WARNING NUM LAYERS NEEDS TO BE REMOVED SON!!!!")
+    for layer in range(num_layers):
         num_dimensions = act_list[0][layer].shape[0]  # for all the layers, get the embed_size of that layer
         rbpt = RandomBinaryProjectionTree('rbpt', 75, 75)
-        activation_tree = Engine(num_dimensions, lshashes=[rbpt])        
-        tree_list.append(activation_tree)        
+        activation_tree = Engine(num_dimensions, lshashes=[rbpt])
+        tree_list.append(activation_tree)
 
-    for ind, data_point in enumerate(act_list):                
-        for layer in range(data_point.shape[0]):            
-            tree_list[layer].store_vector(data_point[layer], ind)    
-        
+    for ind, data_point in enumerate(act_list):
+        for layer in range(data_point.shape[0]):
+            tree_list[layer].store_vector(data_point[layer], ind)
+
     #activation_tree = KDTree(act_list)
-    
+
     # run deep knn on evaluation data
-    total = 0 
-    n_correct = 0    
+    total = 0
+    n_correct = 0
     test_iter.reset()
-    for test_batch in test_iter:            
+    for test_batch in test_iter:
         data = convert_seq(test_batch, device=args.gpu, with_label = True)
         text = data['xs']
-        labels = data['ys']    
+        labels = data['ys']
 
         with chainer.using_config('train', False), chainer.no_backprop_mode():   # TODO, is dropout off now?
             output, activations = model.deep_knn_predict(text)
             output.to_cpu()
             activations.to_cpu()
-                 
+
             # activations is (num_layers, batch_size, embed_size), make it be (batch_size, num_layers, embed_size)
-            #activations = activations.reshape(activations.shape[1], activations.shape[0], activations.shape[2])     
+            #activations = activations.reshape(activations.shape[1], activations.shape[0], activations.shape[2])
             activations = F.expand_dims(activations,axis = 1)
 
 
-            # for each layer, get a list of the training data indices           
-            for current_position_in_minibatch, activation in enumerate(activations.data):                
+            # for each layer, get a list of the training data indices
+            for current_position_in_minibatch, activation in enumerate(activations.data):
                 # activation is size (layers, embed_size)
-                for ind, layer_act in enumerate(activation): # layer_act is one layer of activations, ind is current layer index                
-                    training_indices = []                                    
-                    knn = tree_list[ind].neighbours(layer_act)                                    
+                for ind, layer_act in enumerate(activation): # layer_act is one layer of activations, ind is current layer index
+                    training_indices = []
+                    knn = tree_list[ind].neighbours(layer_act)
                     for nn in knn:
-                        training_indices.append(nn[1])                                                
-                    
+                        training_indices.append(nn[1])
+
                 pred_labels = []
                 for training_data_index in training_indices:  # for all indices, get their label
                     pred_labels.append(label_list[training_data_index])
-                                
+
                 most_common,num_most_common = Counter(pred_labels).most_common(1)[0] # get most common label
-                curr_label = labels[current_position_in_minibatch][0]                
+                curr_label = labels[current_position_in_minibatch][0]
 
                 if most_common == curr_label:
                     n_correct = n_correct + 1
                 total = total + 1
 
-                
-                credibility = float(num_most_common) / float(len(training_indices)) 
+
+                credibility = float(num_most_common) / float(len(training_indices))
 
                 # print crdedibility scores and print out the sentence and all its nearest neighbors
                 #print(credibility)
@@ -256,7 +261,7 @@ def main():
                 #for input_words in text[current_position_in_minibatch]:
                 #    curr_data_input_sentence += idx2word[input_words] + " "
                 #print("Test input", curr_data_input_sentence)
-           
+
                 #print("Nearest Neighbors:")
                 #for training_data_index in training_indices:
                 #    curr_nearest_neighbor_input = train[training_data_index]
@@ -264,7 +269,7 @@ def main():
                 #    for input_words in curr_nearest_neighbor_input[0]:
                 #        curr_nearest_neighbor_input_sentence += idx2word[input_words] + " "
                 #    print(curr_nearest_neighbor_input_sentence)
-                               
+
 
     accuracy = float(n_correct) / float(total)
     print('Deep KNN Test Accuracy:{:.04f}'.format(accuracy))

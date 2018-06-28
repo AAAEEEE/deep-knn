@@ -38,12 +38,12 @@ def setup_model(args):
 
 def run_online(gpu):
     # predict labels online
-    for l in sys.stdin:
-        l = l.strip()
-        if not l:
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
             print('# blank line')
             continue
-        text = nlp_utils.normalize_text(l)
+        text = nlp_utils.normalize_text(line)
         words = nlp_utils.split_text(text, char_based=setup['char_based'])
         xs = nlp_utils.transform_to_array([words], vocab, with_label=False)
         xs = nlp_utils.convert_seq(xs, device=gpu, with_label=False)
@@ -68,15 +68,15 @@ def run_batch(gpu, batchsize=64):
             print('{}\t{:.4f}\t{}'.format(answer, score, ' '.join(words)))
 
     batch = []
-    for l in sys.stdin:
-        l = l.strip()
-        if not l:
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
             if batch:
                 predict_batch(batch)
                 batch = []
             print('# blank line')
             continue
-        text = nlp_utils.normalize_text(l)
+        text = nlp_utils.normalize_text(line)
         words = nlp_utils.split_text(text, char_based=setup['char_based'])
         batch.append(words)
         if len(batch) >= batchsize:

@@ -222,27 +222,18 @@ class MLP(chainer.ChainList):
     def __call__(self, x, return_all_layers = False):        
         if return_all_layers:                 
             # x is shape (batch_size, embed_size, 1)            
-            all_layers = x.reshape(x.shape[2], x.shape[0], x.shape[1]).data # make it (1, batch_size, embed_size)
+            all_layers = x.reshape(x.shape[2], x.shape[0], x.shape[1]) # make it (1, batch_size, embed_size)
 
         for i, link in enumerate(self.children()):
-            x = F.dropout(x, ratio=self.dropout)
+            x = F.dropout(x, ratio=self.dropout) ########### is there a bug here with back2back dropout
             x = F.relu(link(x))            
-            
-            if return_all_layers:               
-                print(x.data.shape)
+        
+            if return_all_layers:                                      
                 
-                all_layers.append(x.data)
-                print(all_layers.shape)
-                exit()
-                
-                all_layers = F.vstack((all_layers, x))
-                print(all_layers.shape)
-                exit()
-                #all_layers = F.hstack((all_layers, x))                    
-            
-        if return_all_layers:            
-            print(all_layers.shape)
-            exit()
+                expanded_x = F.expand_dims(x, axis = 0) # turn x from (batch_size, embed_size) to (1, batch_size, embed_size)                                            
+                all_layers = F.vstack([all_layers, expanded_x])                               
+
+        if return_all_layers:                    
             return x, all_layers            
         return x
 

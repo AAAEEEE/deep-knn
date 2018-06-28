@@ -31,7 +31,7 @@ def create_parser():
                         help='Number of layers of RNN or MLP following CNN')
     parser.add_argument('--dropout', '-d', type=float, default=0.4,
                         help='Dropout rate')
-    parser.add_argument('--dataset', '-data', default='stsa.binary',
+    parser.add_argument('--dataset', '-data', default='TREC',
                         choices=['dbpedia', 'imdb.binary', 'imdb.fine',
                                  'TREC', 'stsa.binary', 'stsa.fine',
                                  'custrev', 'mpqa', 'rt-polarity', 'subj'],

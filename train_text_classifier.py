@@ -192,7 +192,12 @@ def main():
     from nearpy.hashes import RandomBinaryProjectionTree
 
     tree_list = []    # there is one lookup knn tree for each layer of the network
-    for layer in range(args.layer):        
+    
+    num_layers = args.layer    
+    if args.model == 'cnn':  # they don't count the cnn as a layer, only the mlps
+        num_layers = num_layers + 1 
+        
+    for layer in range(num_layers):          
         num_dimensions = act_list[0][layer].shape[0]  # for all the layers, get the embed_size of that layer
         rbpt = RandomBinaryProjectionTree('rbpt', 75, 75)
         activation_tree = Engine(num_dimensions, lshashes=[rbpt])        

@@ -39,7 +39,7 @@ def main():
                                  'TREC', 'stsa.binary', 'stsa.fine',
                                  'custrev', 'mpqa', 'rt-polarity', 'subj'],
                         help='Name of dataset.')
-    parser.add_argument('--model', '-model', default='rnn',
+    parser.add_argument('--model', '-model', default='cnn',
                         choices=['cnn', 'rnn', 'bow'],
                         help='Name of encoder model type.')
     parser.add_argument('--char-based', action='store_true')
@@ -150,9 +150,6 @@ def main():
 
     # Run the training
     trainer.run()
-
-
-    exit()
 
     # run deep knn on training data and store activations
     act_list = []  # all the activations, layer[training data [allpoints] a list of lists of activations    

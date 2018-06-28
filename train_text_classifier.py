@@ -39,7 +39,7 @@ def main():
                                  'TREC', 'stsa.binary', 'stsa.fine',
                                  'custrev', 'mpqa', 'rt-polarity', 'subj'],
                         help='Name of dataset.')
-    parser.add_argument('--model', '-model', default='cnn',
+    parser.add_argument('--model', '-model', default='rnn',
                         choices=['cnn', 'rnn', 'bow'],
                         help='Name of encoder model type.')
     parser.add_argument('--char-based', action='store_true')
@@ -158,11 +158,7 @@ def main():
     train_iter = chainer.iterators.SerialIterator(train, args.batchsize, repeat = False) # no repeat to make it easy to save all datapoints
     train_iter.reset()                
 
-    i = 0 
     for train_batch in train_iter:       
-        i = i + 1
-        if i > 2:
-            continue
         data = convert_seq(train_batch, device=args.gpu, with_label = True)
         text = data['xs']
         labels = data['ys']    

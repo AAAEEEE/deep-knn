@@ -147,7 +147,7 @@ class RNNEncoder(chainer.Chain):
         if dknn:
             # if doing deep knn, also return all the LSTM layers
             # last_h: n_layers * (batch_size, n_units)
-            return last_h[-1], last_h  # FIXME might have to convert to list 
+            return last_h[-1], last_h
         return last_h[-1]
 
 

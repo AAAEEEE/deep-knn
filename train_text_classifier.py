@@ -35,7 +35,7 @@ def main():
                         help='Number of layers of RNN or MLP following CNN')
     parser.add_argument('--dropout', '-d', type=float, default=0.4,
                         help='Dropout rate')
-    parser.add_argument('--dataset', '-data', default='stsa.binary',
+    parser.add_argument('--dataset', '-data', default='TREC',
                         choices=['dbpedia', 'imdb.binary', 'imdb.fine',
                                  'TREC', 'stsa.binary', 'stsa.fine',
                                  'custrev', 'mpqa', 'rt-polarity', 'subj'],
@@ -154,7 +154,7 @@ def main():
         idx2word[idx] = word
 
     # Run the training
-    trainer.run()
+    #trainer.run()
 
     # run deep knn on training data and store activations
     act_list = []  # all the activations, layer[training data [allpoints] a list of lists of activations    
@@ -179,8 +179,7 @@ def main():
                 label_list.append(model.xp.argmax(prediction.data)) # should this be predicted label or ground truth?                    
         
             # activations is (num_layers, batch_size, embed_size), make it be (batch_size, num_layers, embed_size)
-            activations = F.expand_dims(activations,axis = 1)
-            #activations = activations.reshape(activations.shape[1], activations.shape[0], activations.shape[2])                   
+            activations = activations.reshape(activations.shape[1], activations.shape[0], activations.shape[2])                   
             for activation in activations:                
                 act_list.append(activation.data)  # each entry in act_list is (num_layers, embed_size)
 
@@ -194,8 +193,6 @@ def main():
     if args.model == 'cnn':  # they don't count the cnn as a layer, only the mlps
         num_layers = num_layers + 1 
        
-    num_layers = 1
-    print("WARNING NUM LAYERS NEEDS TO BE REMOVED SON!!!!") 
     for layer in range(num_layers):          
         num_dimensions = act_list[0][layer].shape[0]  # for all the layers, get the embed_size of that layer
         rbpt = RandomBinaryProjectionTree('rbpt', 75, 75)
@@ -223,8 +220,7 @@ def main():
             activations.to_cpu()
                  
             # activations is (num_layers, batch_size, embed_size), make it be (batch_size, num_layers, embed_size)
-            #activations = activations.reshape(activations.shape[1], activations.shape[0], activations.shape[2])     
-            activations = F.expand_dims(activations,axis = 1)
+            activations = activations.reshape(activations.shape[1], activations.shape[0], activations.shape[2])     
 
 
             # for each layer, get a list of the training data indices           

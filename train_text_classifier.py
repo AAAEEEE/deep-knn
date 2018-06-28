@@ -3,6 +3,7 @@ import argparse
 import datetime
 import json
 import os
+import numpy as np
 
 import chainer
 from chainer import training
@@ -21,7 +22,7 @@ def main():
         description='Chainer example: Text Classification')
     parser.add_argument('--batchsize', '-b', type=int, default=64,    
                         help='Number of images in each mini-batch')
-    parser.add_argument('--epoch', '-e', type=int, default=1,
+    parser.add_argument('--epoch', '-e', type=int, default=20,
                         help='Number of sweeps over the dataset to train')
     parser.add_argument('--gpu', '-g', type=int, default=-1,
                         help='GPU ID (negative value indicates CPU)')
@@ -42,6 +43,7 @@ def main():
                         choices=['cnn', 'rnn', 'bow'],
                         help='Name of encoder model type.')
     parser.add_argument('--char-based', action='store_true')
+    parser.add_argument('--word_vectors', default=None, help='word vector directory')
 
     args = parser.parse_args()
     print(json.dumps(args.__dict__, indent=2))
@@ -81,14 +83,17 @@ def main():
     model = nets.TextClassifier(encoder, n_class)
     
     # load word vectors
-    with open('word_vector_path.txt', "r") as fi:
-        for line in fi:
-            line_list = line.strip().split(" ")
-            word = line_list[0]
-            if word in vocab:
-                vec = self.xp.array(line_list[1::], dtype=np.float32)
-                model.encoder.embed.W.data[vocab[word]] = vec
-
+    if args.word_vectors:
+        print("loading word vectors")
+        with open(args.word_vectors, "r") as fi:
+            for line in fi:
+                line_list = line.strip().split(" ")
+                word = line_list[0]
+                if word in vocab:
+                    vec = model.xp.array(line_list[1::], dtype=np.float32)
+                    model.encoder.embed.W.data[vocab[word]] = vec
+    else:
+        print("WARNING: NO Word Vectors")
 
     if args.gpu >= 0:
         # Make a specified GPU current
@@ -144,7 +149,10 @@ def main():
         json.dump(args.__dict__, f)
 
     # Run the training
-    #######################trainer.run()
+    trainer.run()
+
+
+    exit()
 
     # run deep knn on training data and store activations
     act_list = []  # all the activations, layer[training data [allpoints] a list of lists of activations    

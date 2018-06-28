@@ -21,7 +21,7 @@ def main():
         description='Chainer example: Text Classification')
     parser.add_argument('--batchsize', '-b', type=int, default=64,    
                         help='Number of images in each mini-batch')
-    parser.add_argument('--epoch', '-e', type=int, default=10,
+    parser.add_argument('--epoch', '-e', type=int, default=1,
                         help='Number of sweeps over the dataset to train')
     parser.add_argument('--gpu', '-g', type=int, default=-1,
                         help='GPU ID (negative value indicates CPU)')
@@ -38,7 +38,7 @@ def main():
                                  'TREC', 'stsa.binary', 'stsa.fine',
                                  'custrev', 'mpqa', 'rt-polarity', 'subj'],
                         help='Name of dataset.')
-    parser.add_argument('--model', '-model', default='cnn',
+    parser.add_argument('--model', '-model', default='rnn',
                         choices=['cnn', 'rnn', 'bow'],
                         help='Name of encoder model type.')
     parser.add_argument('--char-based', action='store_true')
@@ -79,6 +79,17 @@ def main():
     encoder = Encoder(n_layers=args.layer, n_vocab=len(vocab),
                       n_units=args.unit, dropout=args.dropout)
     model = nets.TextClassifier(encoder, n_class)
+    
+    # load word vectors
+    with open('word_vector_path.txt', "r") as fi:
+        for line in fi:
+            line_list = line.strip().split(" ")
+            word = line_list[0]
+            if word in vocab:
+                vec = self.xp.array(line_list[1::], dtype=np.float32)
+                model.encoder.embed.W.data[vocab[word]] = vec
+
+
     if args.gpu >= 0:
         # Make a specified GPU current
         chainer.backends.cuda.get_device_from_id(args.gpu).use()
@@ -133,16 +144,20 @@ def main():
         json.dump(args.__dict__, f)
 
     # Run the training
-    trainer.run()
+    #######################trainer.run()
 
     # run deep knn on training data and store activations
-    layers_act_list = []  # all the activations, layer[training data [allpoints] a list of lists of activations    
+    act_list = []  # all the activations, layer[training data [allpoints] a list of lists of activations    
     label_list = []
 
     train_iter = chainer.iterators.SerialIterator(train, args.batchsize, repeat = False) # no repeat to make it easy to save all datapoints
     train_iter.reset()                
 
+    i = 0 
     for train_batch in train_iter:       
+        i = i + 1
+        if i > 2:
+            continue
         data = convert_seq(train_batch, device=args.gpu, with_label = True)
         text = data['xs']
         labels = data['ys']    
@@ -152,30 +167,35 @@ def main():
             output, activations = model.deep_knn_predict(text)
             output.to_cpu()
             activations.to_cpu()
-        
-    
+
             #  add predicted label to list
             for prediction in output:                
                 label_list.append(model.xp.argmax(prediction.data)) # should this be predicted label or ground truth?                    
-
+        
+            # activations is (num_layers, batch_size, embed_size), make it be (batch_size, num_layers, embed_size)
+            activations = activations.reshape(activations.shape[1], activations.shape[0], activations.shape[2])                   
             for activation in activations:                
-                layers_act_list.append(activation.data)
+                act_list.append(activation.data)  # each entry in act_list is (num_layers, embed_size)
 
             #for layer_num, layer_acts in enumerate(activations): # flatten each layer, and then place into master list
-                #layers_act_list[layer_num] = layer_acts
+                #act_list[layer_num] = layer_acts
     
-    
-    num_dimensions = layers_act_list[0].shape[0]
     from nearpy import Engine
     from nearpy.hashes import RandomBinaryProjectionTree
-    rbpt = RandomBinaryProjectionTree('rbpt', 75, 75)
-    activation_tree = Engine(num_dimensions, lshashes=[rbpt])    
-    for ind, element in enumerate(layers_act_list):        
-        activation_tree.store_vector(element, ind)
 
-    #activation_tree = KDTree(layers_act_list)
+    tree_list = []    # there is one lookup knn tree for each layer of the network
+    for layer in range(args.layer):        
+        num_dimensions = act_list[0][layer].shape[0]  # for all the layers, get the embed_size of that layer
+        rbpt = RandomBinaryProjectionTree('rbpt', 75, 75)
+        activation_tree = Engine(num_dimensions, lshashes=[rbpt])        
+        tree_list.append(activation_tree)        
+
+    for ind, data_point in enumerate(act_list):                
+        for layer in range(data_point.shape[0]):            
+            tree_list[layer].store_vector(data_point[layer], ind)    
+        
+    #activation_tree = KDTree(act_list)
     
-
     # run deep knn on evaluation data
     total = 0 
     n_correct = 0    
@@ -190,13 +210,19 @@ def main():
             output.to_cpu()
             activations.to_cpu()
                  
+            # activations is (num_layers, batch_size, embed_size), make it be (batch_size, num_layers, embed_size)
+            activations = activations.reshape(activations.shape[1], activations.shape[0], activations.shape[2])     
 
-            # for each layer, get a list of the training data indices            
+
+            # for each layer, get a list of the training data indices           
             for current_position_in_minibatch, activation in enumerate(activations.data):                
-                training_indices = []                
-                knn = activation_tree.neighbours(activation)                
-                for nn in knn:                                                            
-                    training_indices.append(nn[1])                                                
+                # activation is size (layers, embed_size)
+                for ind, layer_act in enumerate(activation): # layer_act is one layer of activations, ind is current layer index                
+                    training_indices = []                                    
+                    knn = tree_list[ind].neighbours(layer_act)                                    
+                    for nn in knn:
+                        training_indices.append(nn[1])                                                
+                    
 
                 #_, training_indices = activation_tree.query([activation], k = 75)                                                                
                 #training_indices = training_indices[0]                
@@ -212,24 +238,27 @@ def main():
                 pred_labels = []
                 for training_data_index in training_indices:  # for all indices, get their label
                     pred_labels.append(label_list[training_data_index])
-                
-                print(pred_labels)
+                                
                 most_common,num_most_common = Counter(pred_labels).most_common(1)[0] # get most common label
-                curr_label = labels[current_position_in_minibatch][0]
+                curr_label = labels[current_position_in_minibatch][0]                
 
                 if most_common == curr_label:
                     n_correct = n_correct + 1
                 total = total + 1
-        
+
+                
+                credibility = float(num_most_common) / float(len(training_indices)) 
+
     accuracy = float(n_correct) / float(total)
     print('Deep KNN Test Accuracy:{:.04f}'.format(accuracy))
 
-
+# Unknown questions
+# Probably doesn't matter (training accuracy will be near 100%), but use model predicted output or ground truth label?
+# 75 neighbors at each layer, or 75 neighbors total?
+# concat all hidden layers then count, or have each layer fight it out
 # before or after relu?
-#  Consider using a different distance than euclidean, cosine?
-# i am guessing he doesn't include the logits as a "layer" also?
-
-# also, im concatening hiddens when it should be a list
+# Consider using a different distance than euclidean, cosine?
+# i am guessing he doesn't include the logits as a "layer" also? I am not doing so right now, see TextClassifier's deep_knn prediction function
 
 if __name__ == '__main__':
     main()

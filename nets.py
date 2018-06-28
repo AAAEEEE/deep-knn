@@ -144,9 +144,9 @@ class RNNEncoder(chainer.Chain):
         last_h, last_c, ys = self.encoder(None, None, exs)
         assert(last_h.shape == (self.n_layers, len(xs), self.out_units))        
             
-        if return_all_layers:   # if doing deep knn, also return all the LSTM layers
-            return last_h[-1], last_h.reshape(last_h.shape[1], self.n_layers * last_h.shape[2])        
-        
+        if return_all_layers:   # if doing deep knn, also return all the LSTM layers           
+            # last_h is size (num_layers, batch_size, embed_size) return that list
+            return last_h[-1], last_h#last_h.reshape(last_h.shape[1], self.n_layers * last_h.shape[2])       
         return last_h[-1]  # o/w just return final top layer
     
 
@@ -220,17 +220,29 @@ class MLP(chainer.ChainList):
         self.out_units = n_units
 
     def __call__(self, x, return_all_layers = False):        
-        if return_all_layers:            
-            all_layers = x.reshape(x.shape[0], x.shape[1])
-            
+        if return_all_layers:                 
+            # x is shape (batch_size, embed_size, 1)            
+            all_layers = x.reshape(x.shape[2], x.shape[0], x.shape[1]).data # make it (1, batch_size, embed_size)
+
         for i, link in enumerate(self.children()):
-            x = F.dropout(x, ratio=self.dropout)       ################################################ is there a bug in their code, dropout back to back?
+            x = F.dropout(x, ratio=self.dropout)
             x = F.relu(link(x))            
             
             if return_all_layers:               
-                all_layers = F.hstack((all_layers, x))                    
+                print(x.data.shape)
+                
+                all_layers.append(x.data)
+                print(all_layers.shape)
+                exit()
+                
+                all_layers = F.vstack((all_layers, x))
+                print(all_layers.shape)
+                exit()
+                #all_layers = F.hstack((all_layers, x))                    
             
         if return_all_layers:            
+            print(all_layers.shape)
+            exit()
             return x, all_layers            
         return x
 

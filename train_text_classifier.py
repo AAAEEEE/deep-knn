@@ -80,11 +80,13 @@ def main():
             args.out,
             '{}_{}'.format(args.dataset, args.model)
             )
-    if not os.path.isdir(save_path):
+    if not os.path.isdir(args.out):
         os.mkdir(args.out)
+    if not os.path.isdir(save_path):
+        os.mkdir(save_path)
     vocab_path = os.path.join(save_path, 'vocab.json')
     model_path = os.path.join(save_path, 'best_model.npz')
-    setup_path = os.path.join(args.out, 'args.json')
+    setup_path = os.path.join(save_path, 'args.json')
 
     with open(vocab_path, 'w') as f:
         json.dump(vocab, f)

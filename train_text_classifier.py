@@ -10,7 +10,7 @@ from chainer import training
 from chainer.training import extensions
 
 import nets
-from nlp_utils import convert_seq
+from nlp_utils import convert_seq, convert_snli_seq
 import text_datasets
 
 
@@ -34,7 +34,8 @@ def create_parser():
     parser.add_argument('--dataset', '-data', default='TREC',
                         choices=['dbpedia', 'imdb.binary', 'imdb.fine',
                                  'TREC', 'stsa.binary', 'stsa.fine',
-                                 'custrev', 'mpqa', 'rt-polarity', 'subj'],
+                                 'custrev', 'mpqa', 'rt-polarity', 'subj',
+                                 'snli'],
                         help='Name of dataset.')
     parser.add_argument('--model', '-model', default='cnn',
                         choices=['cnn', 'rnn', 'bow'],
@@ -54,6 +55,9 @@ def main():
     if args.dataset == 'dbpedia':
         train, test, vocab = text_datasets.get_dbpedia(
             char_based=args.char_based)
+    elif args.dataset == 'snli':
+        train, test, vocab = text_datasets.get_snli(
+            char_based=args.char_based)
     elif args.dataset.startswith('imdb.'):
         train, test, vocab = text_datasets.get_imdb(
             fine_grained=args.dataset.endswith('.fine'),
@@ -66,7 +70,10 @@ def main():
     print('# train data: {}'.format(len(train)))
     print('# test  data: {}'.format(len(test)))
     print('# vocab: {}'.format(len(vocab)))
-    n_class = len(set([int(d[1]) for d in train]))
+    if args.dataset == 'snli':
+        n_class = 3
+    else:
+        n_class = len(set([int(d[1]) for d in train]))
     print('# class: {}'.format(n_class))
 
     train_iter = chainer.iterators.SerialIterator(train, args.batchsize)
@@ -109,7 +116,10 @@ def main():
         Encoder = nets.BOWMLPEncoder
     encoder = Encoder(n_layers=args.layer, n_vocab=len(vocab),
                       n_units=args.unit, dropout=args.dropout)
-    model = nets.TextClassifier(encoder, n_class)
+    if args.dataset == 'snli':
+        model = nets.SNLIClassifier(encoder)
+    else:
+        model = nets.TextClassifier(encoder, n_class)
 
     # load word vectors
     if args.word_vectors:
@@ -135,9 +145,10 @@ def main():
     optimizer.add_hook(chainer.optimizer.WeightDecay(1e-4))
 
     # Set up a trainer
+    converter = convert_snli_seq if args.dataset == 'snli' else convert_seq
     updater = training.updaters.StandardUpdater(
         train_iter, optimizer,
-        converter=convert_seq, device=args.gpu)
+        converter=converter, device=args.gpu)
     trainer = training.Trainer(
             updater, (args.epoch, 'epoch'),
             out=os.path.join(
@@ -146,7 +157,7 @@ def main():
     # Evaluate the model with the test dataset for each epoch
     trainer.extend(extensions.Evaluator(
         test_iter, model,
-        converter=convert_seq, device=args.gpu))
+        converter=converter, device=args.gpu))
 
     # Take a best snapshot
     record_trigger = training.triggers.MaxValueTrigger(

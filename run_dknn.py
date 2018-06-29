@@ -10,7 +10,7 @@ import chainer.functions as F
 
 import nets
 import text_datasets
-from nlp_utils import convert_seq
+from nlp_utils import convert_seq, convert_snli_seq
 
 from nearpy import Engine
 from nearpy.hashes import RandomBinaryProjectionTree
@@ -26,6 +26,9 @@ def setup_model(args):
     dataset = setup['dataset']
     if dataset == 'dbpedia':
         train, test, vocab = text_datasets.get_dbpedia(
+            char_based=setup['char_based'])
+    elif dataset == 'snli':
+        train, test, vocab = text_datasets.get_snli(
             char_based=setup['char_based'])
     elif dataset.startswith('imdb.'):
         train, test, vocab = text_datasets.get_imdb(
@@ -52,7 +55,10 @@ def setup_model(args):
         Encoder = nets.BOWMLPEncoder
     encoder = Encoder(n_layers=setup['layer'], n_vocab=len(vocab),
                       n_units=setup['unit'], dropout=setup['dropout'])
-    model = nets.TextClassifier(encoder, n_class)
+    if dataset == 'snli':
+        model = nets.SNLIClassifier(encoder)
+    else:
+        model = nets.TextClassifier(encoder, n_class)
     chainer.serializers.load_npz(setup['model_path'], model)
     if args.gpu >= 0:
         # Make a specified GPU current
@@ -70,7 +76,7 @@ class DkNN:
         self.tree_list = None
         self.label_list = None
 
-    def build(self, train, batch_size=64, device=0):
+    def build(self, train, batch_size=64, converter=convert_seq, device=0):
         train_iter = chainer.iterators.SerialIterator(
                 train, batch_size, repeat=False)
         train_iter.reset()
@@ -80,7 +86,7 @@ class DkNN:
         print('caching hiddens')
         n_batches = len(train) // batch_size
         for i, train_batch in enumerate(tqdm(train_iter, total=n_batches)):
-            data = convert_seq(train_batch, device=device, with_label=True)
+            data = converter(train_batch, device=device, with_label=True)
             text = data['xs']
             labels = data['ys']
 
@@ -155,11 +161,13 @@ def main():
     args = parser.parse_args()
 
     model, train, test, vocab, setup = setup_model(args)
+    converter = convert_snli_seq if setup['dataset'] == 'snli' else convert_seq
 
     '''get dknn layers of training data'''
 
     dknn = DkNN(model)
-    dknn.build(train, setup['batchsize'], setup['gpu'])
+    dknn.build(train, batch_size=setup['batchsize'],
+               converter=converter, device=setup['gpu'])
 
     # activation_tree = KDTree(act_list)
 
@@ -170,12 +178,14 @@ def main():
 
     print('run dknn on evaluation data')
 
+
+
     total = 0
     n_reg_correct = 0
     n_knn_correct = 0
     n_batches = len(test) // setup['batchsize']
     for test_batch in tqdm(test_iter, total=n_batches):
-        data = convert_seq(test_batch, device=args.gpu, with_label=True)
+        data = converter(test_batch, device=args.gpu, with_label=True)
         text = data['xs']
         knn_pred, knn_conf, reg_pred, reg_conf = dknn.predict(text)
         label = [int(x) for x in data['ys']]

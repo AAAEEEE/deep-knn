@@ -114,6 +114,63 @@ class TextClassifier(chainer.Chain):
             return outputs
 
 
+class SNLIClassifier(chainer.Chain):
+
+    """A classifier using a given encoder.
+
+     This chain encodes a sentence and classifies it into classes.
+
+     Args:
+         encoder (Link): A callable encoder, which extracts a feature.
+             Input is a list of variables whose shapes are
+             "(sentence_length, )".
+             Output is a variable whose shape is "(batchsize, n_units)".
+         n_class (int): The number of classes to be predicted.
+
+     """
+
+    def __init__(self, encoder, n_class=3, n_layers=3, dropout=0.1):
+        super(SNLIClassifier, self).__init__()
+        with self.init_scope():
+            self.encoder = encoder
+            self.mlp = MLP(n_layers, encoder.out_units * 2, dropout)
+            self.output = L.Linear(encoder.out_units * 2, n_class)
+        self.dropout = dropout
+        self.n_dknn_layers = self.mlp.n_dknn_layers + 1
+
+    def __call__(self, xs, ys):
+        concat_outputs = self.predict(xs)
+        concat_truths = F.concat(ys, axis=0)
+
+        loss = F.softmax_cross_entropy(concat_outputs, concat_truths)
+        accuracy = F.accuracy(concat_outputs, concat_truths)
+        reporter.report({'loss': loss.data}, self)
+        reporter.report({'accuracy': accuracy.data}, self)
+        return loss
+
+    def predict(self, xs, softmax=False, argmax=False, dknn=False):
+        h0 = self.encoder(xs[0], dknn=False)
+        h1 = self.encoder(xs[1], dknn=False)
+        encodings = F.concat([h0, h1], axis=1)
+        encodings = F.dropout(encodings, ratio=self.dropout)
+
+        if dknn:
+            outputs, dknn_layers = self.mlp(encodings, dknn=True)
+            dknn_layers = [encodings] + dknn_layers
+        else:
+            outputs = self.mlp(encodings, dknn=False)
+
+        outputs = self.output(outputs)
+        if softmax:
+            outputs = F.softmax(outputs).data
+        elif argmax:
+            outputs = self.xp.argmax(outputs.data, axis=1)
+        if dknn:
+            return outputs, dknn_layers
+        else:
+            return outputs
+
+
 class RNNEncoder(chainer.Chain):
 
     """A LSTM-RNN Encoder with Word Embedding.

@@ -17,7 +17,7 @@ import text_datasets
 def create_parser():
     parser = argparse.ArgumentParser(
         description='Chainer example: Text Classification')
-    parser.add_argument('--batchsize', '-b', type=int, default=64,
+    parser.add_argument('--batchsize', '-b', type=int, default=128,
                         help='Number of images in each mini-batch')
     parser.add_argument('--epoch', '-e', type=int, default=10,
                         help='Number of sweeps over the dataset to train')

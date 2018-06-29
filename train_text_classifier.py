@@ -48,7 +48,6 @@ def create_parser():
 def main():
     parser = create_parser()
     args = parser.parse_args()
-    print(json.dumps(args.__dict__, indent=2))
     current_datetime = '{}'.format(datetime.datetime.today())
 
     # Load a dataset
@@ -73,6 +72,27 @@ def main():
     train_iter = chainer.iterators.SerialIterator(train, args.batchsize)
     test_iter = chainer.iterators.SerialIterator(test, args.batchsize,
                                                  repeat=False, shuffle=False)
+
+    # Save vocabulary and model's setting
+    if not os.path.isdir(args.out):
+        os.mkdir(args.out)
+    current = os.path.dirname(os.path.abspath(__file__))
+    vocab_path = os.path.join(current, args.out, 'vocab.json')
+    with open(vocab_path, 'w') as f:
+        json.dump(vocab, f)
+    model_path = os.path.join(
+            current,
+            args.out,
+            '{}_{}'.format(args.dataset, args.model),
+            'best_model.npz')
+    model_setup = args.__dict__
+    model_setup['vocab_path'] = vocab_path
+    model_setup['model_path'] = model_path
+    model_setup['n_class'] = n_class
+    model_setup['datetime'] = current_datetime
+    with open(os.path.join(args.out, 'args.json'), 'w') as f:
+        json.dump(model_setup, f)
+    print(json.dumps(model_setup, indent=2))
 
     # Setup a model
     if args.model == 'rnn':
@@ -112,7 +132,10 @@ def main():
     updater = training.updaters.StandardUpdater(
         train_iter, optimizer,
         converter=convert_seq, device=args.gpu)
-    trainer = training.Trainer(updater, (args.epoch, 'epoch'), out=args.out)
+    trainer = training.Trainer(
+            updater, (args.epoch, 'epoch'),
+            out=os.path.join(
+                args.out, '{}_{}'.format(args.dataset, args.model)))
 
     # Evaluate the model with the test dataset for each epoch
     trainer.extend(extensions.Evaluator(
@@ -134,22 +157,6 @@ def main():
 
     # Print a progress bar to stdout
     trainer.extend(extensions.ProgressBar())
-
-    # Save vocabulary and model's setting
-    if not os.path.isdir(args.out):
-        os.mkdir(args.out)
-    current = os.path.dirname(os.path.abspath(__file__))
-    vocab_path = os.path.join(current, args.out, 'vocab.json')
-    with open(vocab_path, 'w') as f:
-        json.dump(vocab, f)
-    model_path = os.path.join(current, args.out, 'best_model.npz')
-    model_setup = args.__dict__
-    model_setup['vocab_path'] = vocab_path
-    model_setup['model_path'] = model_path
-    model_setup['n_class'] = n_class
-    model_setup['datetime'] = current_datetime
-    with open(os.path.join(args.out, 'args.json'), 'w') as f:
-        json.dump(args.__dict__, f)
 
     idx2word = {}   # build reverse dict
     for word, idx in vocab.items():

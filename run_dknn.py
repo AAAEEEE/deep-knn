@@ -199,13 +199,11 @@ def main():
     print('knn accuracy', n_knn_correct / total)
     print('reg accuracy', n_reg_correct / total)
 
-# Unknown questions
-# Probably doesn't matter (training accuracy will be near 100%), but use model predicted output or ground truth label?
-# 75 neighbors at each layer, or 75 neighbors total?
-# concat all hidden layers then count, or have each layer fight it out
-# before or after relu?
-# Consider using a different distance than euclidean, cosine?
-# i am guessing he doesn't include the logits as a "layer" also? I am not doing so right now, see TextClassifier's deep_knn prediction function
+    # TODO
+    # calibration for credibility
+    # 75 neighbors at each layer, or 75 neighbors total?
+    # before or after relu?
+    # Consider using a different distance than euclidean, cosine?
 
 
 if __name__ == '__main__':

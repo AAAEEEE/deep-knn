@@ -74,23 +74,27 @@ def main():
                                                  repeat=False, shuffle=False)
 
     # Save vocabulary and model's setting
-    if not os.path.isdir(args.out):
-        os.mkdir(args.out)
     current = os.path.dirname(os.path.abspath(__file__))
-    vocab_path = os.path.join(current, args.out, 'vocab.json')
-    with open(vocab_path, 'w') as f:
-        json.dump(vocab, f)
-    model_path = os.path.join(
+    save_path = os.path.join(
             current,
             args.out,
-            '{}_{}'.format(args.dataset, args.model),
-            'best_model.npz')
+            '{}_{}'.format(args.dataset, args.model)
+            )
+    if not os.path.isdir(save_path):
+        os.mkdir(args.out)
+    vocab_path = os.path.join(save_path, 'vocab.json')
+    model_path = os.path.join(save_path, 'best_model.npz')
+    setup_path = os.path.join(args.out, 'args.json')
+
+    with open(vocab_path, 'w') as f:
+        json.dump(vocab, f)
+
     model_setup = args.__dict__
     model_setup['vocab_path'] = vocab_path
     model_setup['model_path'] = model_path
     model_setup['n_class'] = n_class
     model_setup['datetime'] = current_datetime
-    with open(os.path.join(args.out, 'args.json'), 'w') as f:
+    with open(setup_path, 'w') as f:
         json.dump(model_setup, f)
     print(json.dumps(model_setup, indent=2))
 

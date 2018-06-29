@@ -6,7 +6,7 @@ import json
 import shutil
 import tarfile
 import tempfile
-from zipfile import ZipFile
+import zipfile
 
 import numpy
 
@@ -180,7 +180,7 @@ def download_snli():
     # if not os.path.exists(path):
     #     urllib.request.urlretrieve(URL_SNLI, path)
     path = chainer.dataset.cached_download(URL_SNLI)
-    with ZipFile(path) as zf:
+    with zipfile.ZipFile(path, 'r') as zf:
         zf.extractall()
     path = os.path.abspath(os.path.join(path, os.pardir))
     path = os.path.join(path, 'snli_1.0')

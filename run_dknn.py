@@ -78,7 +78,8 @@ class DkNN:
         act_list = [[] for _ in range(self.n_dknn_layers)]
         label_list = []
         print('caching hiddens')
-        for i, train_batch in enumerate(tqdm(train_iter)):
+        n_batches = train // batch_size
+        for i, train_batch in enumerate(tqdm(train_iter, total=n_batches)):
             data = convert_seq(train_batch, device=device, with_label=True)
             text = data['xs']
             labels = data['ys']
@@ -172,7 +173,8 @@ def main():
     total = 0
     n_reg_correct = 0
     n_knn_correct = 0
-    for test_batch in tqdm(test_iter):
+    n_batches = test // setup['batchsize']
+    for test_batch in tqdm(test_iter, total=n_batches):
         data = convert_seq(test_batch, device=args.gpu, with_label=True)
         text = data['xs']
         knn_pred, knn_conf, reg_pred, reg_conf = dknn.predict(text)

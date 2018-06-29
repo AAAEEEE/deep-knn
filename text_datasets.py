@@ -2,9 +2,11 @@ import csv
 import glob
 import io
 import os
+import json
 import shutil
 import tarfile
 import tempfile
+from zipfile import ZipFile
 
 import numpy
 
@@ -14,10 +16,12 @@ from nlp_utils import make_vocab
 from nlp_utils import normalize_text
 from nlp_utils import split_text
 from nlp_utils import transform_to_array
+from nlp_utils import transform_snli_to_array
 
 URL_DBPEDIA = 'https://github.com/le-scientifique/torchDatasets/raw/master/dbpedia_csv.tar.gz'  # NOQA
 URL_IMDB = 'https://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz'
 URL_OTHER_BASE = 'https://raw.githubusercontent.com/harvardnlp/sent-conv-torch/master/data/'  # NOQA
+URL_SNLI = 'https://nlp.stanford.edu/projects/snli/snli_1.0.zip'
 
 
 def download_dbpedia():
@@ -168,3 +172,63 @@ def get_other_text_dataset(name, vocab=None, shrink=1,
     test = transform_to_array(test, vocab)
 
     return train, test, vocab
+
+
+def download_snli():
+    print('download snli')
+    # path = os.path.join(DATA_DIR, 'snli.zip')
+    # if not os.path.exists(path):
+    #     urllib.request.urlretrieve(URL_SNLI, path)
+    path = chainer.dataset.cached_download(URL_SNLI)
+    with ZipFile(path) as zf:
+        zf.extractall()
+    path = os.path.abspath(os.path.join(path, os.pardir))
+    path = os.path.join(path, 'snli_1.0')
+    return path
+
+
+def most_common(lst):
+    return max(set(lst), key=lst.count)
+
+
+def read_snli(path, split, shrink=1, char_based=False):
+    path = os.path.join(path, 'snli_1.0_{}.jsonl'.format(split))
+    dataset = []
+    labels = {'entailment': 0, 'neutral': 1, 'contradiction': 2}
+    with open(path) as f:
+        for i, x in enumerate(f.readlines()):
+            if i % shrink != 0:
+                continue
+            x = json.loads(x)
+            if x['gold_label'] in labels:
+                label = labels[x['gold_label']]
+            else:
+                label = labels[most_common(x['annotator_labels'])]
+            premise = split_text(normalize_text(x['sentence1']), char_based)
+            hypothesis = split_text(normalize_text(x['sentence2']), char_based)
+            dataset.append((premise, hypothesis, label))
+    return dataset
+
+
+def get_snli(vocab=None, shrink=1, char_based=False):
+    path = download_snli()
+
+    print('read snli')
+    train = read_snli(path, 'train', shrink=shrink, char_based=char_based)
+    test = read_snli(path, 'dev', shrink=shrink, char_based=char_based)
+
+    if vocab is None:
+        print('construct vocabulary based on frequency')
+        train_premise = [(x, z) for x, y, z in train]
+        train_hypothesis = [(y, z) for x, y, z in train]
+        vocab = make_vocab(train_premise + train_hypothesis)
+
+    train = transform_snli_to_array(train, vocab)
+    test = transform_snli_to_array(test, vocab)
+
+    return train, test, vocab
+
+
+if __name__ == '__main__':
+    train, test, vocab = get_snli()
+    print(len(train))

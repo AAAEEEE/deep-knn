@@ -113,15 +113,31 @@ class DkNN:
                 tree.store_vector(example, j)
             self.tree_list.append(tree)
 
-    def predict(self, xs):
+    def calibrate(self, data, batch_size=64, converter=convert_seq, device=0):
+        data_iter = chainer.iterators.SerialIterator(
+                data, batch_size, repeat=False)
+        data_iter.reset()
+
+        print('calibrating credibility')
+        self._A = []
+        n_batches = len(data) // batch_size
+        for i, batch in enumerate(tqdm(data_iter, total=n_batches)):
+            batch = converter(batch, device=device, with_label=True)
+            labels = [int(x) for x in batch['ys']]
+            _, knn_logits = self(batch['xs'])
+            for j, _ in enumerate(batch):
+                cnt_all = len(knn_logits[j])
+                preds = dict(Counter(knn_logits[j]).most_common())
+                cnt_y = preds[labels[j]]
+                self._A.append(cnt_y / cnt_all)
+
+    def __call__(self, xs):
         assert self.tree_list is not None
         assert self.label_list is not None
 
         with chainer.using_config('train', False):
-            output, dknn_layers = self.model.predict(
+            reg_logits, dknn_layers = self.model.predict(
                     xs, softmax=True, dknn=True)
-        reg_pred = F.argmax(output, 1).data.tolist()
-        reg_conf = F.max(output, 1).data.tolist()
 
         _dknn_layers = []
         for layer in dknn_layers:
@@ -130,7 +146,7 @@ class DkNN:
         # n_examples * n_layers
         dknn_layers = list(map(list, zip(*_dknn_layers)))
 
-        knn_pred, knn_cred = [], []
+        knn_logits = []
         for i, example_layers in enumerate(dknn_layers):
             # go through examples in the batch
             neighbors = []
@@ -143,12 +159,37 @@ class DkNN:
             neighbor_labels = []
             for idx in neighbors:  # for all indices, get their label
                 neighbor_labels.append(self.label_list[idx])
+            knn_logits .append(neighbor_labels)
+        return reg_logits, knn_logits
 
-            pred, count = Counter(neighbor_labels).most_common(1)[0]
-            cred = count / len(neighbors)
-            knn_pred.append(pred)
-            knn_cred.append(cred)
-        return knn_pred, knn_cred, reg_pred, reg_conf
+    def predict(self, xs, calibrated=True):
+        assert self.tree_list is not None
+        assert self.label_list is not None
+
+        batch_size = len(xs)
+        reg_logits, knn_logits = self(xs)
+
+        reg_pred = F.argmax(reg_logits, 1).data.tolist()
+        reg_conf = F.max(reg_logits, 1).data.tolist()
+
+        knn_pred, knn_cred, knn_conf = [], [], []
+        for i in range(batch_size):
+            cnt_all = len(knn_logits[i])
+            cnts = Counter(knn_logits[i]).most_common()
+            label, cnt_1st = cnts[0]
+            if len(cnts) > 1:
+                _, cnt_2nd = cnts[1]
+            else:
+                cnt_2nd = 0
+            p_1 = cnt_1st / cnt_all
+            p_2 = cnt_2nd / cnt_all
+            if calibrated and self._A is not None:
+                p_1 = len([x for x in self._A if x >= p_1]) / len(self._A)
+                p_2 = len([x for x in self._A if x >= p_2]) / len(self._A)
+            knn_pred.append(label)
+            knn_cred.append(p_1)
+            knn_conf.append(1 - p_2)
+        return knn_pred, knn_cred, knn_conf, reg_pred, reg_conf
 
 
 def main():
@@ -169,6 +210,10 @@ def main():
     dknn.build(train, batch_size=setup['batchsize'],
                converter=converter, device=setup['gpu'])
 
+    # need to select calibration data more carefully
+    dknn.calibrate(train[:1000], batch_size=setup['batchsize'],
+                   converter=converter, device=setup['gpu'])
+
     # activation_tree = KDTree(act_list)
 
     '''run dknn on evaluation data'''
@@ -178,8 +223,6 @@ def main():
 
     print('run dknn on evaluation data')
 
-
-
     total = 0
     n_reg_correct = 0
     n_knn_correct = 0
@@ -187,7 +230,7 @@ def main():
     for test_batch in tqdm(test_iter, total=n_batches):
         data = converter(test_batch, device=args.gpu, with_label=True)
         text = data['xs']
-        knn_pred, knn_conf, reg_pred, reg_conf = dknn.predict(text)
+        knn_pred, knn_cred, knn_conf, reg_pred, reg_conf = dknn.predict(text)
         label = [int(x) for x in data['ys']]
         total += len(label)
         n_knn_correct += sum(x == y for x, y in zip(knn_pred, label))

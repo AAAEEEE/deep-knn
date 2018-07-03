@@ -129,14 +129,20 @@ class SNLIClassifier(chainer.Chain):
 
      """
 
-    def __init__(self, encoder, n_class=3, n_layers=3, dropout=0.1):
+    def __init__(self, encoder, n_class=3, n_layers=3, dropout=0.1,
+                 combine=False):
         super(SNLIClassifier, self).__init__()
         with self.init_scope():
             self.encoder = encoder
             self.mlp = MLP(n_layers, encoder.out_units * 2, dropout)
             self.output = L.Linear(encoder.out_units * 2, n_class)
         self.dropout = dropout
-        self.n_dknn_layers = self.mlp.n_dknn_layers + 1
+        if combine:
+            self.n_dknn_layers = self.mlp.n_dknn_layers + \
+                                 self.encoder.n_dknn_layers
+        else:
+            self.n_dknn_layers = self.mlp.n_dknn_layers + 1
+        self.combine = combine
 
     def __call__(self, xs, ys):
         concat_outputs = self.predict(xs)
@@ -149,14 +155,22 @@ class SNLIClassifier(chainer.Chain):
         return loss
 
     def predict(self, xs, softmax=False, argmax=False, dknn=False):
-        h0 = self.encoder(xs[0], dknn=False)
-        h1 = self.encoder(xs[1], dknn=False)
-        encodings = F.concat([h0, h1], axis=1)
+        dknn_layers = []
+        if self.combine:
+            if dknn:
+                encodings, dknn_layers = self.encoder(xs, dknn=True)
+            else:
+                encodings = self.encoder(xs, dknn=False)
+        else:
+            h0 = self.encoder(xs[0], dknn=False)
+            h1 = self.encoder(xs[1], dknn=False)
+            encodings = F.concat([h0, h1], axis=1)
+            dknn_layers = [encodings]
         encodings = F.dropout(encodings, ratio=self.dropout)
 
         if dknn:
-            outputs, dknn_layers = self.mlp(encodings, dknn=True)
-            dknn_layers = [encodings] + dknn_layers
+            outputs, _dknn_layers = self.mlp(encodings, dknn=True)
+            dknn_layers = dknn_layers + _dknn_layers
         else:
             outputs = self.mlp(encodings, dknn=False)
 

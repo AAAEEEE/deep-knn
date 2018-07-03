@@ -82,9 +82,9 @@ class TextClassifier(chainer.Chain):
     def __init__(self, encoder, n_class, dropout=0.1):
         super(TextClassifier, self).__init__()
         with self.init_scope():
-            self.encoder = encoder            
+            self.encoder = encoder
             if type(encoder) is BiLSTMEncoder:  # bilstm make twice as big
-                self.output = L.Linear(2 * encoder.out_units, n_class)    
+                self.output = L.Linear(2 * encoder.out_units, n_class)
             else:
                 self.output = L.Linear(encoder.out_units, n_class)
         self.dropout = dropout
@@ -136,12 +136,12 @@ class SNLIClassifier(chainer.Chain):
                  combine=False):
         super(SNLIClassifier, self).__init__()
         with self.init_scope():
-            self.encoder = encoder            
+            self.encoder = encoder
             if type(encoder) is BiLSTMEncoder:  # bilstm make twice as big
                 self.mlp = MLP(n_layers, encoder.out_units * 2 * 2, dropout)
             else:
                 self.mlp = MLP(n_layers, encoder.out_units * 2, dropout)
-            
+
             self.output = L.Linear(encoder.out_units * 2, n_class)
 
         self.dropout = dropout
@@ -172,9 +172,10 @@ class SNLIClassifier(chainer.Chain):
         else:
             u = self.encoder(xs[0], dknn=False)
             v = self.encoder(xs[1], dknn=False)
-            encodings = F.concat((u, v, F.absolute(u-v), u*v), axis = 1)    
+            encodings = F.concat((u, v, F.absolute(u-v), u*v), axis=1)
             dknn_layers = [encodings]
-        #encodings = F.dropout(encodings, ratio=self.dropout) # don't think we need because mlp uses dropout at beginning
+        # encodings = F.dropout(encodings, ratio=self.dropout)
+        # don't think we need because mlp uses dropout at beginning
 
         if dknn:
             outputs, _dknn_layers = self.mlp(encodings, dknn=True)
@@ -262,13 +263,14 @@ class BiLSTMEncoder(chainer.Chain):
         forward_last_h, forward_last_c, ys = self.encoder_forward(None, None, exs)
         backward_last_h, backward_last_c, ys = self.encoder_backward(None, None, exs)
 
-        last_h = F.concat((forward_last_h, backward_last_h), axis = 2)
+        last_h = F.concat((forward_last_h, backward_last_h), axis=2)
         assert(last_h.shape == (self.n_layers, len(xs), 2 * self.out_units))
         if dknn:
             # if doing deep knn, also return all the LSTM layers
             # last_h: n_layers * (batch_size, n_units)
             return last_h[-1], last_h
         return last_h[-1]
+
 
 class CNNEncoder(chainer.Chain):
 

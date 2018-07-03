@@ -39,7 +39,7 @@ def create_parser():
                                  'snli'],
                         help='Name of dataset.')
     parser.add_argument('--model', '-model', default='cnn',
-                        choices=['cnn', 'rnn', 'bow'],
+                        choices=['cnn', 'rnn', 'bow', 'bilstm'],
                         help='Name of encoder model type.')
     parser.add_argument('--char-based', action='store_true')
     parser.add_argument('--word_vectors', default=None,

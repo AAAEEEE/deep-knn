@@ -210,7 +210,7 @@ def read_snli(path, split, shrink=1, char_based=False):
     return dataset
 
 
-def get_snli(vocab=None, shrink=1, char_based=False):
+def get_snli(vocab=None, shrink=1, char_based=False, combine=False):
     path = download_snli()
 
     print('read snli')
@@ -223,8 +223,8 @@ def get_snli(vocab=None, shrink=1, char_based=False):
         train_hypothesis = [(y, z) for x, y, z in train]
         vocab = make_vocab(train_premise + train_hypothesis)
 
-    train = transform_snli_to_array(train, vocab)
-    test = transform_snli_to_array(test, vocab)
+    train = transform_snli_to_array(train, vocab, combine=combine)
+    test = transform_snli_to_array(test, vocab, combine=combine)
 
     return train, test, vocab
 

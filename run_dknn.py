@@ -29,7 +29,8 @@ def setup_model(args):
             char_based=setup['char_based'])
     elif dataset == 'snli':
         train, test, vocab = text_datasets.get_snli(
-            char_based=setup['char_based'])
+            char_based=setup['char_based'],
+            combine=setup['combine_snli'])
     elif dataset.startswith('imdb.'):
         train, test, vocab = text_datasets.get_imdb(
             fine_grained=dataset.endswith('.fine'),
@@ -56,7 +57,7 @@ def setup_model(args):
     encoder = Encoder(n_layers=setup['layer'], n_vocab=len(vocab),
                       n_units=setup['unit'], dropout=setup['dropout'])
     if dataset == 'snli':
-        model = nets.SNLIClassifier(encoder)
+        model = nets.SNLIClassifier(encoder, combine=setup['combine_snli'])
     else:
         model = nets.TextClassifier(encoder, n_class)
     chainer.serializers.load_npz(setup['model_path'], model)
@@ -202,7 +203,10 @@ def main():
     args = parser.parse_args()
 
     model, train, test, vocab, setup = setup_model(args)
-    converter = convert_snli_seq if setup['dataset'] == 'snli' else convert_seq
+    if setup['dataset'] == 'snli' and not setup['combine_snli']:
+        converter = convert_snli_seq
+    else:
+        converter = convert_seq
 
     '''get dknn layers of training data'''
 

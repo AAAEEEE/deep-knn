@@ -98,7 +98,7 @@ def transform_snli_to_array(dataset, vocab, with_label=True, combine=False):
                     for premise, hypothesis, cls in dataset]
     else:
         if combine:
-            return [make_array(premise + hypothesis, vocab)
+            return [make_array(premise + ['$$$'] + hypothesis, vocab)
                     for premise, hypothesis in dataset]
         else:
             return [(make_array(premise, vocab), make_array(hypothesis, vocab))

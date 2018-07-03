@@ -221,7 +221,8 @@ def get_snli(vocab=None, shrink=1, char_based=False, combine=False):
         print('construct vocabulary based on frequency')
         train_premise = [(x, z) for x, y, z in train]
         train_hypothesis = [(y, z) for x, y, z in train]
-        vocab = make_vocab(train_premise + train_hypothesis)
+        train_all = train_premise + train_hypothesis
+        vocab = make_vocab(train_all, special=['$$$'] if combine else [])
 
     train = transform_snli_to_array(train, vocab, combine=combine)
     test = transform_snli_to_array(test, vocab, combine=combine)

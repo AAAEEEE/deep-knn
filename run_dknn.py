@@ -76,6 +76,7 @@ class DkNN:
         self.n_dknn_layers = self.model.n_dknn_layers
         self.tree_list = None
         self.label_list = None
+        self._A = None
 
     def build(self, train, batch_size=64, converter=convert_seq, device=0):
         train_iter = chainer.iterators.SerialIterator(
@@ -163,7 +164,25 @@ class DkNN:
             knn_logits .append(neighbor_labels)
         return reg_logits, knn_logits
 
-    def predict(self, xs, calibrated=True):
+    def get_credibility(self, xs, ys, calibrated=False):
+        assert self.tree_list is not None
+        assert self.label_list is not None
+
+        batch_size = len(xs)
+        _, knn_logits = self(xs)
+
+        ys = [int(y) for y in ys]
+        knn_cred = []
+        for i in range(batch_size):
+            cnt_all = len(knn_logits[i])
+            cnts = dict(Counter(knn_logits[i]).most_common())
+            p_1 = cnts.get(ys[i], 0) / cnt_all
+            if calibrated and self._A is not None:
+                p_1 = len([x for x in self._A if x >= p_1]) / len(self._A)
+            knn_cred.append(p_1)
+        return knn_cred
+
+    def predict(self, xs, calibrated=False):
         assert self.tree_list is not None
         assert self.label_list is not None
 

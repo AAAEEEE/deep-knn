@@ -111,6 +111,8 @@ def main():
     # Setup a model
     if args.model == 'rnn':
         Encoder = nets.RNNEncoder
+    if args.model == 'bilstm':
+        Encoder = nets.BiLSTMEncoder
     elif args.model == 'cnn':
         Encoder = nets.CNNEncoder
     elif args.model == 'bow':

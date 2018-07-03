@@ -82,8 +82,11 @@ class TextClassifier(chainer.Chain):
     def __init__(self, encoder, n_class, dropout=0.1):
         super(TextClassifier, self).__init__()
         with self.init_scope():
-            self.encoder = encoder
-            self.output = L.Linear(encoder.out_units, n_class)
+            self.encoder = encoder            
+            if type(encoder) is BiLSTMEncoder:  # bilstm make twice as big
+                self.output = L.Linear(2 * encoder.out_units, n_class)    
+            else:
+                self.output = L.Linear(encoder.out_units, n_class)
         self.dropout = dropout
         self.n_dknn_layers = self.encoder.n_dknn_layers
 
@@ -134,7 +137,11 @@ class SNLIClassifier(chainer.Chain):
         super(SNLIClassifier, self).__init__()
         with self.init_scope():
             self.encoder = encoder            
-            self.mlp = MLP(n_layers, encoder.out_units * 2, dropout)
+            if type(encoder) is BiLSTMEncoder:  # bilstm make twice as big
+                self.mlp = MLP(n_layers, encoder.out_units * 2 * 2, dropout)
+            else:
+                self.mlp = MLP(n_layers, encoder.out_units * 2, dropout)
+            
             self.output = L.Linear(encoder.out_units * 2, n_class)
 
         self.dropout = dropout
@@ -222,6 +229,46 @@ class RNNEncoder(chainer.Chain):
             return last_h[-1], last_h
         return last_h[-1]
 
+
+class BiLSTMEncoder(chainer.Chain):
+
+    """A LSTM-RNN Encoder with Word Embedding.
+
+    This model encodes a sentence sequentially using LSTM.
+
+    Args:
+        n_layers (int): The number of LSTM layers.
+        n_vocab (int): The size of vocabulary.
+        n_units (int): The number of units of a LSTM layer and word embedding.
+        dropout (float): The dropout ratio.
+
+    """
+
+    def __init__(self, n_layers, n_vocab, n_units, dropout=0.1):
+        super(BiLSTMEncoder, self).__init__()
+        with self.init_scope():
+            self.embed = L.EmbedID(n_vocab, n_units,
+                                   initialW=embed_init)
+            self.encoder_forward = L.NStepLSTM(n_layers, n_units, n_units, dropout)
+            self.encoder_backward = L.NStepLSTM(n_layers, n_units, n_units, dropout)
+
+        self.n_layers = n_layers
+        self.out_units = n_units
+        self.dropout = dropout
+        self.n_dknn_layers = n_layers
+
+    def __call__(self, xs, dknn=False):
+        exs = sequence_embed(self.embed, xs, self.dropout)
+        forward_last_h, forward_last_c, ys = self.encoder_forward(None, None, exs)
+        backward_last_h, backward_last_c, ys = self.encoder_backward(None, None, exs)
+
+        last_h = F.concat((forward_last_h, backward_last_h), axis = 2)
+        assert(last_h.shape == (self.n_layers, len(xs), 2 * self.out_units))
+        if dknn:
+            # if doing deep knn, also return all the LSTM layers
+            # last_h: n_layers * (batch_size, n_units)
+            return last_h[-1], last_h
+        return last_h[-1]
 
 class CNNEncoder(chainer.Chain):
 

@@ -132,9 +132,10 @@ class SNLIClassifier(chainer.Chain):
     def __init__(self, encoder, n_class=3, n_layers=3, dropout=0.1):
         super(SNLIClassifier, self).__init__()
         with self.init_scope():
-            self.encoder = encoder
+            self.encoder = encoder            
             self.mlp = MLP(n_layers, encoder.out_units * 2, dropout)
             self.output = L.Linear(encoder.out_units * 2, n_class)
+
         self.dropout = dropout
         self.n_dknn_layers = self.mlp.n_dknn_layers + 1
 
@@ -149,10 +150,14 @@ class SNLIClassifier(chainer.Chain):
         return loss
 
     def predict(self, xs, softmax=False, argmax=False, dknn=False):
-        h0 = self.encoder(xs[0], dknn=False)
-        h1 = self.encoder(xs[1], dknn=False)
-        encodings = F.concat([h0, h1], axis=1)
-        encodings = F.dropout(encodings, ratio=self.dropout)
+        u = self.encoder(xs[0], dknn=False)
+        v = self.encoder(xs[1], dknn=False)
+        
+        #encodings = F.concat([u, v], axis=1)        
+        encodings = F.concat((u, v, F.absolute(u-v), u*v), axis = 1)    
+        
+        # don't think we need because MLP uses dropout first 
+        #encodings = F.dropout(encodings, ratio=self.dropout)
 
         if dknn:
             outputs, dknn_layers = self.mlp(encodings, dknn=True)

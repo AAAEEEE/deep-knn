@@ -145,7 +145,7 @@ def main():
     # Setup an optimizer
     optimizer = chainer.optimizers.Adam()
     optimizer.setup(model)
-    optimizer.add_hook(chainer.optimizer.WeightDecay(1e-4))
+    #optimizer.add_hook(chainer.optimizer.WeightDecay(1e-4))
 
     # Set up a trainer
     if args.dataset == 'snli' and not args.combine_snli:

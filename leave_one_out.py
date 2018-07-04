@@ -6,10 +6,10 @@ from tqdm import tqdm, tqdm_notebook
 from collections import Counter
 
 import numpy as np
+import cupy as cp
 
 import chainer
 import chainer.functions as F
-
 
 import nets
 import text_datasets
@@ -56,9 +56,6 @@ def main():
                         help='If true, uses locally sensitive hashing (with k = 10 NN) for NN search.')
     args = parser.parse_args()
     
-    if args.gpu != -1:
-        import cupy as cp
-
     model, train, test, vocab, setup = setup_model(args)
     reverse_vocab = {v: k for k, v in vocab.items()}
 
@@ -90,7 +87,7 @@ def main():
             if score < 1.0:
                 print(score, reverse_vocab[x[idx]])            
         
-        neighbors = dknn.get_neighbors([text])
+        neighbors = dknn.get_neighbors([cp.asarray(text)])
         print('neighbors:')
         for neighbor in neighbors[:5]:
             curr_nearest_neighbor_input_sentence = '     '

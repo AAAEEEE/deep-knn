@@ -20,6 +20,8 @@ def setup_model(args):
     # Setup a model
     if setup['model'] == 'rnn':
         Encoder = nets.RNNEncoder
+    elif setup['model'] == 'bilstm':
+        Encoder = nets.BiLSTMEncoder
     elif setup['model'] == 'cnn':
         Encoder = nets.CNNEncoder
     elif setup['model'] == 'bow':

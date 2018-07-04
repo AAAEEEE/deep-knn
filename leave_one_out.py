@@ -6,7 +6,6 @@ from tqdm import tqdm, tqdm_notebook
 from collections import Counter
 
 import numpy as np
-import cupy as cp
 
 import chainer
 import chainer.functions as F
@@ -53,7 +52,12 @@ def main():
                         help='GPU ID (negative value indicates CPU)')
     parser.add_argument('--model-setup', required=True,
                         help='Model setup dictionary.')
+    parser.add_argument('--lsh', action='store_true', default = False,
+                        help='If true, uses locally sensitive hashing (with k = 10 NN) for NN search.')
     args = parser.parse_args()
+    
+    if args.gpu != -1:
+        import cupy as cp
 
     model, train, test, vocab, setup = setup_model(args)
     reverse_vocab = {v: k for k, v in vocab.items()}
@@ -63,15 +67,15 @@ def main():
     else:
         converter = convert_seq
 
-    dknn = DkNN(model)
+    dknn = DkNN(model, args.lsh)
     dknn.build(train, batch_size=setup['batchsize'],
                converter=converter, device=setup['gpu'])
 
-    # need to select calibration data more carefully
+    # need to select calibration data more carefully    
     dknn.calibrate(train[:1000], batch_size=setup['batchsize'],
                    converter=converter, device=setup['gpu'])
 
-    for i in range(10):
+    for i in range(100):
         label = int(test[i][1])
         text = test[i][0]
         y, original_score, _, _, _ = dknn.predict([cp.asarray(text)])
@@ -81,9 +85,18 @@ def main():
         scores = sorted(list(enumerate(scores)), key=lambda x: x[1])
         print(' '.join(reverse_vocab[w] for w in x))
         print('label: {}'.format(label))
-        print('prediction: {} ({})'.format(y, original_score[0]))
-        for idx, score in scores[:10]:
-            print(score, reverse_vocab[x[idx]])
+        print('prediction: {} ({})'.format(y, original_score[0]))          
+        for idx, score in scores[:]:
+            if score < 1.0:
+                print(score, reverse_vocab[x[idx]])            
+        
+        neighbors = dknn.get_neighbors([text])
+        print('neighbors:')
+        for neighbor in neighbors[:5]:
+            curr_nearest_neighbor_input_sentence = '     '
+            for word in train[neighbor][0]:            
+                curr_nearest_neighbor_input_sentence += reverse_vocab[word] + ' '
+            print(curr_nearest_neighbor_input_sentence)
         print()
         print()
 

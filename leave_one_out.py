@@ -8,6 +8,9 @@ from collections import Counter
 import numpy as np
 import cupy as cp
 
+import matplotlib
+import matplotlib.pyplot as plt
+
 import chainer
 import chainer.functions as F
 
@@ -43,12 +46,6 @@ def leave_one_out(x, y, scorer, gpu=True):
     # rank
     scores = scorer(xs, ys)
     return scores
-
-
-
-import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
 
 def colorize(words, color_array):
     # words is a list of words

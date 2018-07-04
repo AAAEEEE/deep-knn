@@ -45,6 +45,22 @@ def leave_one_out(x, y, scorer, gpu=True):
     return scores
 
 
+
+import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+
+def colorize(words, color_array):
+    # words is a list of words
+    # color_array is an array of numbers between 0 and 1 of length equal to words
+    cmap = matplotlib.cm.get_cmap('RdBu')
+    template = '<span class="barcode"; style="color: black; background-color: {}">{}</span>'
+    colored_string = ''
+    for word, color in zip(words, color_array):
+        color = matplotlib.colors.rgb2hex(cmap(color)[:3])
+        colored_string += template.format(color, '&nbsp' + word + '&nbsp')
+    return colored_string
+
 def main():
     parser = argparse.ArgumentParser(
         description='Chainer example: Text Classification')
@@ -83,6 +99,11 @@ def main():
         y = y[0]
         scores = leave_one_out(x, y, dknn.get_credibility)
         scores = sorted(list(enumerate(scores)), key=lambda x: x[1])
+        
+
+        # words = 'The quick brown fox jumps over the lazy dog'.split()
+        # color_array = np.random.rand(len(words))
+        # s = colorize(words, color_array)
         print(' '.join(reverse_vocab[w] for w in x))
         print('label: {}'.format(label))
         print('prediction: {} ({})'.format(y, original_score[0]))          
@@ -90,6 +111,13 @@ def main():
             if score < 1.0:
                 print(score, reverse_vocab[x[idx]])            
         
+        # visualize results in heatmap
+        words = [reverse_vocab[w] for w in x]
+        visual = colorize(words, scores)
+        with open('colorize.html', 'w') as f:
+            f.write(s)
+
+        # print neighbors
         neighbors = dknn.get_neighbors([text])
         print('neighbors:')
         for neighbor in neighbors[:5]:

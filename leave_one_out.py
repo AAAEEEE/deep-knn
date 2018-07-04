@@ -12,6 +12,9 @@ import matplotlib
 import matplotlib.pyplot as plt
 
 
+import matplotlib
+import matplotlib.pyplot as plt
+
 import chainer
 import chainer.functions as F
 

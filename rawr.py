@@ -13,6 +13,7 @@ from nlp_utils import convert_seq, convert_snli_seq
 from utils import setup_model
 
 
+'''
 def get_onehot_grad(model, xs, ys=None):
     if ys is None:
         with chainer.using_config('train', False):
@@ -27,6 +28,7 @@ def get_onehot_grad(model, xs, ys=None):
     onehot_grad = F.sum(exs_grad * exs, axis=1)
     onehot_grad = F.split_axis(onehot_grad, ex_sections, axis=0)
     return onehot_grad
+'''
 
 
 def remove_one(model, xs, n_beams, indices, removed_indices, max_beam_size=5):
@@ -160,7 +162,8 @@ def main():
             test, args.batchsize, repeat=False, shuffle=False)
 
     checkpoint = []
-    for batch_idx, batch in enumerate(tqdm(test_iter)):
+    n_batches = len(test) // args.batchsize
+    for batch_idx, batch in enumerate(tqdm(test_iter, total=n_batches)):
         if batch_idx > 10:
             break
 
@@ -190,8 +193,8 @@ def main():
             checkpoint.append([])
             for i in range(start, start + n_finals[example_idx]):
                 ri = reduced_xs[i].tolist()
-                rp = int(ys_1[i])
-                rs = ss_1[i]
+                rp = int(ys_1[i])  # reduced prediction
+                rs = ss_1[i]  # reduced output distribution
                 rr = removed_indices[i]
                 entry = {'original_input': oi,
                          'reduced_input': ri,
@@ -202,6 +205,8 @@ def main():
                          'removed_indices': rr,
                          'label': label}
                 checkpoint[-1].append(entry)
+            start += n_finals[example_idx]
+
     with open(os.path.join('rawr_dev.pkl'), 'wb') as f:
         pickle.dump(checkpoint, f)
 

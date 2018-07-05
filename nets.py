@@ -100,7 +100,12 @@ class TextClassifier(chainer.Chain):
         reporter.report({'accuracy': accuracy.data}, self)
         return loss
 
-    def get_onehot_grad(self, xs, ys):
+    def get_onehot_grad(self, xs, ys=None):
+        if ys is None:
+            with chainer.using_config('train', False):
+                ys = self.predict(xs, argmax=True)
+                ys = F.expand_dims(ys, axis=1)
+                ys = [y for y in ys]
         encodings, exs = self.encoder.get_grad(xs)
         outputs = self.output(encodings)
         concat_truths = F.concat(ys, axis=0)

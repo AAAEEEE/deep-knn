@@ -121,7 +121,7 @@ def main():
         print('label: {}'.format(label))
         print('prediction: {} ({})'.format(y, original_score[0]))          
         for idx, score in sorted_scores[:]:
-            if score < 1.0:
+            if score < original_score[0]:
                 print(score, reverse_vocab[x[idx]])
 
         # print()

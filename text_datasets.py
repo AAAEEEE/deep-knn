@@ -214,6 +214,7 @@ def get_snli(vocab=None, shrink=1, char_based=False, combine=False):
     path = download_snli()
 
     print('read snli')
+    path = 'snli_1.0'
     train = read_snli(path, 'train', shrink=shrink, char_based=char_based)
     test = read_snli(path, 'dev', shrink=shrink, char_based=char_based)
 

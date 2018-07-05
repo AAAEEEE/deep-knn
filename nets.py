@@ -138,11 +138,11 @@ class SNLIClassifier(chainer.Chain):
         with self.init_scope():
             self.encoder = encoder
             if type(encoder) is BiLSTMEncoder:  # bilstm make twice as big
-                self.mlp = MLP(n_layers, encoder.out_units * 2 * 2, dropout)
+                self.mlp = MLP(n_layers, encoder.out_units * 4 * 2, dropout)
+                self.output = L.Linear(encoder.out_units * 4 * 2, n_class)
             else:
-                self.mlp = MLP(n_layers, encoder.out_units * 2, dropout)
-
-            self.output = L.Linear(encoder.out_units * 2, n_class)
+                self.mlp = MLP(n_layers, encoder.out_units * 4, dropout)
+                self.output = L.Linear(encoder.out_units * 4, n_class)
 
         self.dropout = dropout
         if combine:

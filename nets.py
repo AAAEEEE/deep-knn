@@ -1,4 +1,4 @@
-import numpy
+import numpy as np
 
 import chainer
 import chainer.functions as F
@@ -30,7 +30,7 @@ def sequence_embed(embed, xs, dropout=0.):
 
     """
     x_len = [len(x) for x in xs]
-    x_section = numpy.cumsum(x_len[:-1])
+    x_section = np.cumsum(x_len[:-1])
     ex = embed(F.concat(xs, axis=0))
     ex = F.dropout(ex, ratio=dropout)
     exs = F.split_axis(ex, x_section, 0)
@@ -99,6 +99,28 @@ class TextClassifier(chainer.Chain):
         reporter.report({'loss': loss.data}, self)
         reporter.report({'accuracy': accuracy.data}, self)
         return loss
+
+    def get_onehot_grad(self, xs, ys):
+        encodings, exs = self.encoder.get_grad(xs)
+        outputs = self.output(encodings)
+        concat_truths = F.concat(ys, axis=0)
+        loss = F.softmax_cross_entropy(outputs, concat_truths)
+
+        if isinstance(exs, tuple):
+            exs_grad = chainer.grad([loss], exs)
+            ex_sections = np.cumsum([ex.shape[0] for ex in exs[:-1]])
+            exs = F.concat(exs, axis=0)
+            exs_grad = F.concat(exs_grad, axis=0)
+            onehot_grad = F.sum(exs_grad * exs, axis=1)
+            onehot_grad = F.split_axis(onehot_grad, ex_sections, axis=0)
+        else:
+            exs_grad = chainer.grad([loss], [exs])[0]
+            # (batch_size, n_dim, max_length, 1)
+            assert exs_grad.shape == exs.shape
+            onehot_grad = F.squeeze(F.sum(exs_grad * exs, 1), 2)
+            lengths = [len(x) for x in xs]
+            onehot_grad = [x[:l] for x, l in zip(onehot_grad, lengths)]
+        return onehot_grad
 
     def predict(self, xs, softmax=False, argmax=False, dknn=False):
         if dknn:
@@ -169,7 +191,7 @@ class SNLIClassifier(chainer.Chain):
                 encodings, dknn_layers = self.encoder(xs, dknn=True)
             else:
                 encodings = self.encoder(xs, dknn=False)
-        else:              
+        else:
             u = self.encoder(xs[0], dknn=False)
             v = self.encoder(xs[1], dknn=False)
             encodings = F.concat((u, v, F.absolute(u-v), u*v), axis=1)
@@ -220,6 +242,12 @@ class RNNEncoder(chainer.Chain):
         self.dropout = dropout
         self.n_dknn_layers = n_layers
 
+    def get_grad(self, xs):
+        exs = sequence_embed(self.embed, xs, dropout=0.)
+        last_h, last_c, ys = self.encoder(None, None, exs)
+        assert(last_h.shape == (self.n_layers, len(xs), self.out_units))
+        return last_h[-1], exs
+
     def __call__(self, xs, dknn=False):
         exs = sequence_embed(self.embed, xs, self.dropout)
         last_h, last_c, ys = self.encoder(None, None, exs)
@@ -250,20 +278,31 @@ class BiLSTMEncoder(chainer.Chain):
         with self.init_scope():
             self.embed = L.EmbedID(n_vocab, n_units,
                                    initialW=embed_init)
-            self.encoder_forward = L.NStepLSTM(n_layers, n_units, n_units, dropout)
-            self.encoder_backward = L.NStepLSTM(n_layers, n_units, n_units, dropout)
+            self.encoder_forward = L.NStepLSTM(
+                    n_layers, n_units, n_units, dropout)
+            self.encoder_backward = L.NStepLSTM(
+                    n_layers, n_units, n_units, dropout)
 
         self.n_layers = n_layers
         self.out_units = n_units
         self.dropout = dropout
         self.n_dknn_layers = n_layers
 
+    def get_grad(self, xs):
+        exs = sequence_embed(self.embed, xs, dropout=0.)
+        fwd_last_h, _, ys = self.encoder_forward(None, None, exs)
+        bwd_last_h, _, ys = self.encoder_backward(None, None, exs)
+
+        last_h = F.concat((fwd_last_h, bwd_last_h), axis=2)
+        assert(last_h.shape == (self.n_layers, len(xs), 2 * self.out_units))
+        return last_h[-1], exs
+
     def __call__(self, xs, dknn=False):
         exs = sequence_embed(self.embed, xs, self.dropout)
-        forward_last_h, forward_last_c, ys = self.encoder_forward(None, None, exs)
-        backward_last_h, backward_last_c, ys = self.encoder_backward(None, None, exs)
+        fwd_last_h, _, ys = self.encoder_forward(None, None, exs)
+        bwd_last_h, _, ys = self.encoder_backward(None, None, exs)
 
-        last_h = F.concat((forward_last_h, backward_last_h), axis=2)
+        last_h = F.concat((fwd_last_h, bwd_last_h), axis=2)
         assert(last_h.shape == (self.n_layers, len(xs), 2 * self.out_units))
         if dknn:
             # if doing deep knn, also return all the LSTM layers
@@ -310,6 +349,17 @@ class CNNEncoder(chainer.Chain):
         self.dropout = dropout
         self.n_dknn_layers = self.mlp.n_dknn_layers + 1
 
+    def get_grad(self, xs):
+        x_block = chainer.dataset.convert.concat_examples(xs, padding=-1)
+        ex_block = block_embed(self.embed, x_block, dropout=0.)
+        h_w3 = F.max(self.cnn_w3(ex_block), axis=2)
+        h_w4 = F.max(self.cnn_w4(ex_block), axis=2)
+        h_w5 = F.max(self.cnn_w5(ex_block), axis=2)
+        h = F.concat([h_w3, h_w4, h_w5], axis=1)
+        h = F.relu(h)
+        # h = F.dropout(h, ratio=self.dropout)
+        return self.mlp(h, no_dropout=True), ex_block
+
     def __call__(self, xs, dknn=False):
         x_block = chainer.dataset.convert.concat_examples(xs, padding=-1)
         ex_block = block_embed(self.embed, x_block, self.dropout)
@@ -345,10 +395,11 @@ class MLP(chainer.ChainList):
         self.out_units = n_units
         self.n_dknn_layers = n_layers
 
-    def __call__(self, x, dknn=False):
+    def __call__(self, x, dknn=False, no_dropout=False):
+        ratio = 0. if no_dropout else self.dropout
         dknn_layers = []
         for i, link in enumerate(self.children()):
-            x = F.dropout(x, ratio=self.dropout)
+            x = F.dropout(x, ratio=ratio)
             x = F.relu(link(x))
             dknn_layers.append(x)
         if dknn:
@@ -380,10 +431,17 @@ class BOWEncoder(chainer.Chain):
         self.dropout = dropout
         self.n_dknn_layers = 1
 
+    def get_grad(self, xs):
+        x_block = chainer.dataset.convert.concat_examples(xs, padding=-1)
+        ex_block = block_embed(self.embed, x_block)
+        x_len = self.xp.array([len(x) for x in xs], np.int32)[:, None, None]
+        h = F.sum(ex_block, axis=2) / x_len
+        return h, ex_block
+
     def __call__(self, xs, dknn=False):
         x_block = chainer.dataset.convert.concat_examples(xs, padding=-1)
         ex_block = block_embed(self.embed, x_block)
-        x_len = self.xp.array([len(x) for x in xs], numpy.int32)[:, None, None]
+        x_len = self.xp.array([len(x) for x in xs], np.int32)[:, None, None]
         h = F.sum(ex_block, axis=2) / x_len
         if dknn:
             return h, [F.squeeze(h, 2)]
@@ -413,8 +471,12 @@ class BOWMLPEncoder(chainer.Chain):
             self.mlp_encoder = MLP(n_layers, n_units, dropout)
 
         self.out_units = n_units
-        self.n_dknn_layers = self.bow_encoder.n_dknn_layers + \
-                             self.mlp_encoder.n_dknn_layers
+        self.n_dknn_layers = 1 + self.mlp_encoder.n_dknn_layers
+
+    def get_grad(self, xs):
+        h, ex_block = self.bow_encoder(xs, dknn=True)
+        output = self.mlp_encoder(h, no_dropout=True)
+        return output, ex_block
 
     def __call__(self, xs, dknn=False):
         if dknn:

@@ -1,79 +1,22 @@
 #!/usr/bin/env python
 import argparse
-import json
-import sys
 from tqdm import tqdm, tqdm_notebook
 from collections import Counter
 
 import chainer
 import chainer.functions as F
 
-import nets
-import text_datasets
-from nlp_utils import convert_seq, convert_snli_seq
-
 from nearpy import Engine
 from nearpy.hashes import RandomBinaryProjectionTree
 from sklearn.neighbors import KDTree
 
-def setup_model(args):
-    sys.stderr.write(json.dumps(args.__dict__, indent=2) + '\n')
-    setup = json.load(open(args.model_setup))
-    print(type(setup))
-    sys.stderr.write(json.dumps(setup, indent=2) + '\n')
-
-    # Load a dataset
-    dataset = setup['dataset']
-    if dataset == 'dbpedia':
-        train, test, vocab = text_datasets.get_dbpedia(
-            char_based=setup['char_based'])
-    elif dataset == 'snli':
-        train, test, vocab = text_datasets.get_snli(
-            char_based=setup['char_based'],
-            combine=setup['combine_snli'])
-    elif dataset.startswith('imdb.'):
-        train, test, vocab = text_datasets.get_imdb(
-            fine_grained=dataset.endswith('.fine'),
-            char_based=setup['char_based'])
-    elif dataset in ['TREC', 'stsa.binary', 'stsa.fine',
-                     'custrev', 'mpqa', 'rt-polarity', 'subj']:
-        train, test, vocab = text_datasets.get_other_text_dataset(
-            dataset, char_based=setup['char_based'])
-
-    # vocab = json.load(open(setup['vocab_path']))
-    n_class = setup['n_class']
-    print('# train data: {}'.format(len(train)))
-    print('# test  data: {}'.format(len(test)))
-    print('# vocab: {}'.format(len(vocab)))
-    print('# class: {}'.format(n_class))
-
-    # Setup a model
-    if setup['model'] == 'rnn':
-        Encoder = nets.RNNEncoder
-    elif setup['model'] == 'bilstm':
-        Encoder = nets.BiLSTMEncoder
-    elif setup['model'] == 'cnn':
-        Encoder = nets.CNNEncoder
-    elif setup['model'] == 'bow':
-        Encoder = nets.BOWMLPEncoder
-    encoder = Encoder(n_layers=setup['layer'], n_vocab=len(vocab),
-                      n_units=setup['unit'], dropout=setup['dropout'])
-    if dataset == 'snli':
-        model = nets.SNLIClassifier(encoder, combine=setup['combine_snli'])
-    else:
-        model = nets.TextClassifier(encoder, n_class)
-    chainer.serializers.load_npz(setup['model_path'], model)
-    if args.gpu >= 0:
-        # Make a specified GPU current
-        chainer.backends.cuda.get_device_from_id(args.gpu).use()
-        model.to_gpu()  # Copy the model to the GPU
-
-    return model, train, test, vocab, setup
+from nlp_utils import convert_seq, convert_snli_seq
+from utils import setup_model
 
 
 class DkNN:
 
-    def __init__(self, model, lsh):
+    def __init__(self, model, lsh=False):
         self.model = model
         self.n_dknn_layers = self.model.n_dknn_layers
         self.tree_list = None
@@ -90,7 +33,7 @@ class DkNN:
         label_list = []
         print('caching hiddens')
         n_batches = len(train) // batch_size
-        for i, train_batch in enumerate(tqdm(train_iter, total=n_batches)):                       
+        for i, train_batch in enumerate(tqdm(train_iter, total=n_batches)):
             data = converter(train_batch, device=device, with_label=True)
             text = data['xs']
             labels = data['ys']
@@ -109,22 +52,22 @@ class DkNN:
         if self.lsh:
             print('using Locally Sensitive Hashing for NN Search')
         else:
-            print('using KDTree for NN Search')            
+            print('using KDTree for NN Search')
         self.tree_list = []  # one lookup tree for each dknn layer
         for i in range(self.n_dknn_layers):
-            print('building tree for layer {}'.format(i))            
-            if self.lsh: # if lsh                    
+            print('building tree for layer {}'.format(i))
+            if self.lsh:  # if lsh
                 n_hidden = act_list[i][0].shape[0]
                 rbpt = RandomBinaryProjectionTree('rbpt', 75, 75)
                 tree = Engine(n_hidden, lshashes=[rbpt])
-                
+
                 for j, example in enumerate(tqdm(act_list[i])):
                     assert example.ndim == 1
                     assert example.shape[0] == n_hidden
-                    
+
                     tree.store_vector(example, j)
-            else: # if kdtree
-                tree = KDTree(act_list[i])    
+            else:  # if kdtree
+                tree = KDTree(act_list[i])
 
             self.tree_list.append(tree)
 
@@ -166,13 +109,13 @@ class DkNN:
             neighbors = []
             for layer_id, hidden in enumerate(example_layers):
                 # go through layers and get neighbors for each
-                if self.lsh: # use lsh
+                if self.lsh:  # use lsh
                     knn = self.tree_list[layer_id].neighbours(hidden)
                     for nn in knn:
-                        neighbors.append(nn[1])                    
-                else: # use kdtree
-                    _, knn = self.tree_list[layer_id].query([hidden], k = 75)                    
-                    neighbors = knn[0]     
+                        neighbors.append(nn[1])
+                else:  # use kdtree
+                    _, knn = self.tree_list[layer_id].query([hidden], k=75)
+                    neighbors = knn[0]
         return neighbors
 
     def __call__(self, xs):
@@ -196,13 +139,13 @@ class DkNN:
             neighbors = []
             for layer_id, hidden in enumerate(example_layers):
                 # go through layers and get neighbors for each
-                if self.lsh: # use lsh
+                if self.lsh:  # use lsh
                     knn = self.tree_list[layer_id].neighbours(hidden)
                     for nn in knn:
-                        neighbors.append(nn[1])                    
-                else: # use kdtree
-                    _, knn = self.tree_list[layer_id].query([hidden], k = 75)                    
-                    neighbors = knn[0]     
+                        neighbors.append(nn[1])
+                else:  # use kdtree
+                    _, knn = self.tree_list[layer_id].query([hidden], k=75)
+                    neighbors = knn[0]
 
             neighbor_labels = []
             for idx in neighbors:  # for all indices, get their label
@@ -230,7 +173,7 @@ class DkNN:
 
     def get_regular_confidence(self, xs, snli=False):
         reg_logits, knn_logits = self(xs)
-        reg_pred = F.argmax(reg_logits, 1).data.tolist()
+        # reg_pred = F.argmax(reg_logits, 1).data.tolist()
         reg_conf = F.max(reg_logits, 1).data.tolist()
         return reg_conf
 
@@ -238,7 +181,7 @@ class DkNN:
         assert self.tree_list is not None
         assert self.label_list is not None
 
-        batch_size = len(xs)                
+        batch_size = len(xs)
         if snli:
             batch_size = int(batch_size / 2)
 
@@ -247,8 +190,8 @@ class DkNN:
         reg_pred = F.argmax(reg_logits, 1).data.tolist()
         reg_conf = F.max(reg_logits, 1).data.tolist()
 
-        knn_pred, knn_cred, knn_conf = [], [], []                
-        for i in range(batch_size):                        
+        knn_pred, knn_cred, knn_conf = [], [], []
+        for i in range(batch_size):
             cnt_all = len(knn_logits[i])
             cnts = Counter(knn_logits[i]).most_common()
             label, cnt_1st = cnts[0]
@@ -268,14 +211,14 @@ class DkNN:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='Chainer example: Text Classification')
+    parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', '-g', type=int, default=0,
                         help='GPU ID (negative value indicates CPU)')
     parser.add_argument('--model-setup', required=True,
                         help='Model setup dictionary.')
-    parser.add_argument('--lsh', action='store_true', default = False,
-                        help='If true, uses locally sensitive hashing (with k = 10 NN) for NN search.')
+    parser.add_argument('--lsh', action='store_true', default=False,
+                        help='If true, uses locally sensitive hashing \
+                              (with k=10 NN) for NN search.')
     args = parser.parse_args()
 
     model, train, test, vocab, setup = setup_model(args)
@@ -285,13 +228,13 @@ def main():
         converter = convert_seq
 
     '''get dknn layers of training data'''
-    dknn = DkNN(model, lsh = args.lsh)
+    dknn = DkNN(model, lsh=args.lsh)
     dknn.build(train, batch_size=setup['batchsize'],
-               converter=converter, device=setup['gpu'])
+               converter=converter, device=args.gpu)
 
     # need to select calibration data more carefully
     dknn.calibrate(train[:1000], batch_size=setup['batchsize'],
-                   converter=converter, device=setup['gpu'])
+                   converter=converter, device=args.gpu)
 
     # activation_tree = KDTree(act_list)
 

@@ -14,7 +14,7 @@ from nlp_utils import convert_seq, convert_snli_seq
 
 from nearpy import Engine
 from nearpy.hashes import RandomBinaryProjectionTree
-
+from sklearn.neighbors import KDTree
 
 def setup_model(args):
     sys.stderr.write(json.dumps(args.__dict__, indent=2) + '\n')
@@ -73,12 +73,13 @@ def setup_model(args):
 
 class DkNN:
 
-    def __init__(self, model):
+    def __init__(self, model, lsh):
         self.model = model
         self.n_dknn_layers = self.model.n_dknn_layers
         self.tree_list = None
         self.label_list = None
         self._A = None
+        self.lsh = lsh
 
     def build(self, train, batch_size=64, converter=convert_seq, device=0):
         train_iter = chainer.iterators.SerialIterator(
@@ -89,7 +90,7 @@ class DkNN:
         label_list = []
         print('caching hiddens')
         n_batches = len(train) // batch_size
-        for i, train_batch in enumerate(tqdm(train_iter, total=n_batches)):
+        for i, train_batch in enumerate(tqdm(train_iter, total=n_batches)):           
             data = converter(train_batch, device=device, with_label=True)
             text = data['xs']
             labels = data['ys']
@@ -105,16 +106,26 @@ class DkNN:
         self.act_list = act_list
         self.label_list = label_list
 
+        if self.lsh:
+            print('using Locally Sensitive Hashing for NN Search')
+        else:
+            print('using KDTree for NN Search')            
         self.tree_list = []  # one lookup tree for each dknn layer
         for i in range(self.n_dknn_layers):
-            print('building tree for layer {}'.format(i))
-            n_hidden = act_list[i][0].shape[0]
-            rbpt = RandomBinaryProjectionTree('rbpt', 75, 75)
-            tree = Engine(n_hidden, lshashes=[rbpt])
-            for j, example in enumerate(tqdm(act_list[i])):
-                assert example.ndim == 1
-                assert example.shape[0] == n_hidden
-                tree.store_vector(example, j)
+            print('building tree for layer {}'.format(i))            
+            if self.lsh: # if lsh                    
+                n_hidden = act_list[i][0].shape[0]
+                rbpt = RandomBinaryProjectionTree('rbpt', 75, 75)
+                tree = Engine(n_hidden, lshashes=[rbpt])
+                
+                for j, example in enumerate(tqdm(act_list[i])):
+                    assert example.ndim == 1
+                    assert example.shape[0] == n_hidden
+                    
+                    tree.store_vector(example, j)
+            else: # if kdtree
+                tree = KDTree(act_list[i])    
+
             self.tree_list.append(tree)
 
     def calibrate(self, data, batch_size=64, converter=convert_seq, device=0):
@@ -134,6 +145,35 @@ class DkNN:
                 preds = dict(Counter(knn_logits[j]).most_common())
                 cnt_y = preds[labels[j]]
                 self._A.append(cnt_y / cnt_all)
+
+    def get_neighbors(self, xs):
+        assert self.tree_list is not None
+        assert self.label_list is not None
+
+        with chainer.using_config('train', False):
+            reg_logits, dknn_layers = self.model.predict(
+                    xs, softmax=True, dknn=True)
+
+        _dknn_layers = []
+        for layer in dknn_layers:
+            layer.to_cpu()
+            _dknn_layers.append([x for x in layer.data])
+        # n_examples * n_layers
+        dknn_layers = list(map(list, zip(*_dknn_layers)))
+
+        for i, example_layers in enumerate(dknn_layers):
+            # go through examples in the batch
+            neighbors = []
+            for layer_id, hidden in enumerate(example_layers):
+                # go through layers and get neighbors for each
+                if self.lsh: # use lsh
+                    knn = self.tree_list[layer_id].neighbours(hidden)
+                    for nn in knn:
+                        neighbors.append(nn[1])                    
+                else: # use kdtree
+                    _, knn = self.tree_list[layer_id].query([hidden], k = 75)                    
+                    neighbors = knn[0]     
+        return neighbors
 
     def __call__(self, xs):
         assert self.tree_list is not None
@@ -156,9 +196,13 @@ class DkNN:
             neighbors = []
             for layer_id, hidden in enumerate(example_layers):
                 # go through layers and get neighbors for each
-                knn = self.tree_list[layer_id].neighbours(hidden)
-                for nn in knn:
-                    neighbors.append(nn[1])
+                if self.lsh: # use lsh
+                    knn = self.tree_list[layer_id].neighbours(hidden)
+                    for nn in knn:
+                        neighbors.append(nn[1])                    
+                else: # use kdtree
+                    _, knn = self.tree_list[layer_id].query([hidden], k = 75)                    
+                    neighbors = knn[0]     
 
             neighbor_labels = []
             for idx in neighbors:  # for all indices, get their label
@@ -221,6 +265,8 @@ def main():
                         help='GPU ID (negative value indicates CPU)')
     parser.add_argument('--model-setup', required=True,
                         help='Model setup dictionary.')
+    parser.add_argument('--lsh', action='store_true', default = False,
+                        help='If true, uses locally sensitive hashing (with k = 10 NN) for NN search.')
     args = parser.parse_args()
 
     model, train, test, vocab, setup = setup_model(args)
@@ -230,8 +276,7 @@ def main():
         converter = convert_seq
 
     '''get dknn layers of training data'''
-
-    dknn = DkNN(model)
+    dknn = DkNN(model, lsh = args.lsh)
     dknn.build(train, batch_size=setup['batchsize'],
                converter=converter, device=setup['gpu'])
 
@@ -261,26 +306,10 @@ def main():
         n_knn_correct += sum(x == y for x, y in zip(knn_pred, label))
         n_reg_correct += sum(x == y for x, y in zip(reg_pred, label))
 
-        #  print crdedibility scores and print out the sentence and all its nearest neighbors
-        # print(credibility)
-        # curr_data_input_sentence = ""
-        # for input_words in text[current_position_in_minibatch]:
-        #     curr_data_input_sentence += idx2word[input_words] + " "
-        # print("Test input", curr_data_input_sentence)
-
-        # print("Nearest Neighbors:")
-        # for training_data_index in training_indices:
-        #     curr_nearest_neighbor_input = train[training_data_index]
-        #     curr_nearest_neighbor_input_sentence = ""
-        #     for input_words in curr_nearest_neighbor_input[0]:
-        #         curr_nearest_neighbor_input_sentence += idx2word[input_words] + " "
-        #     print(curr_nearest_neighbor_input_sentence)
-
     print('knn accuracy', n_knn_correct / total)
     print('reg accuracy', n_reg_correct / total)
 
     # TODO
-    # calibration for credibility
     # 75 neighbors at each layer, or 75 neighbors total?
     # before or after relu?
     # Consider using a different distance than euclidean, cosine?

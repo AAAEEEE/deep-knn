@@ -18,7 +18,7 @@ def normalize_text(text):
     return text.strip().lower()
 
 
-def make_vocab(dataset, max_vocab_size=20000, min_freq=2, special=[]):
+def make_vocab(dataset, max_vocab_size=200000, min_freq=2, special=[]):
     counts = collections.defaultdict(int)
     for tokens, _ in dataset:
         for token in tokens:
@@ -33,7 +33,7 @@ def make_vocab(dataset, max_vocab_size=20000, min_freq=2, special=[]):
     return vocab
 
 
-def read_vocab_list(path, max_vocab_size=20000):
+def read_vocab_list(path, max_vocab_size=200000):
     vocab = {'<eos>': 0, '<unk>': 1}
     with io.open(path, encoding='utf-8', errors='ignore') as f:
         for l in f:

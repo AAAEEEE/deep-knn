@@ -90,7 +90,7 @@ class DkNN:
         label_list = []
         print('caching hiddens')
         n_batches = len(train) // batch_size
-        for i, train_batch in enumerate(tqdm(train_iter, total=n_batches)):           
+        for i, train_batch in enumerate(tqdm(train_iter, total=n_batches)):                       
             data = converter(train_batch, device=device, with_label=True)
             text = data['xs']
             labels = data['ys']
@@ -228,18 +228,27 @@ class DkNN:
             knn_cred.append(p_1)
         return knn_cred
 
-    def predict(self, xs, calibrated=False):
+    def get_regular_confidence(self, xs, snli=False):
+        reg_logits, knn_logits = self(xs)
+        reg_pred = F.argmax(reg_logits, 1).data.tolist()
+        reg_conf = F.max(reg_logits, 1).data.tolist()
+        return reg_conf
+
+    def predict(self, xs, calibrated=False, snli=False):
         assert self.tree_list is not None
         assert self.label_list is not None
 
-        batch_size = len(xs)
+        batch_size = len(xs)                
+        if snli:
+            batch_size = int(batch_size / 2)
+
         reg_logits, knn_logits = self(xs)
 
         reg_pred = F.argmax(reg_logits, 1).data.tolist()
         reg_conf = F.max(reg_logits, 1).data.tolist()
 
-        knn_pred, knn_cred, knn_conf = [], [], []
-        for i in range(batch_size):
+        knn_pred, knn_cred, knn_conf = [], [], []                
+        for i in range(batch_size):                        
             cnt_all = len(knn_logits[i])
             cnts = Counter(knn_logits[i]).most_common()
             label, cnt_1st = cnts[0]

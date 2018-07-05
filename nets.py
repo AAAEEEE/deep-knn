@@ -169,7 +169,7 @@ class SNLIClassifier(chainer.Chain):
                 encodings, dknn_layers = self.encoder(xs, dknn=True)
             else:
                 encodings = self.encoder(xs, dknn=False)
-        else:
+        else:              
             u = self.encoder(xs[0], dknn=False)
             v = self.encoder(xs[1], dknn=False)
             encodings = F.concat((u, v, F.absolute(u-v), u*v), axis=1)

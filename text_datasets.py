@@ -196,7 +196,7 @@ def read_snli(path, split, shrink=1, char_based=False):
     dataset = []
     labels = {'entailment': 0, 'neutral': 1, 'contradiction': 2}
     with open(path) as f:
-        for i, x in enumerate(f.readlines()):
+        for i, x in enumerate(f.readlines()):            
             if i % shrink != 0:
                 continue
             x = json.loads(x)

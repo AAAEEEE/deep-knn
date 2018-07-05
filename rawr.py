@@ -31,7 +31,7 @@ def get_onehot_grad(model, xs, ys=None):
 
 def remove_one(model, xs, n_beams, indices, removed_indices, max_beam_size=5):
     n_examples = len(n_beams)
-    onehot_grad = [x.data for x in get_onehot_grad(model, xs)]
+    onehot_grad = [x.data for x in model.get_onehot_grad(xs)]
     xp = cupy.get_array_module(*onehot_grad)
     # don't remove <eos>
     order = [xp.argsort(x[:-1]).tolist() for x in onehot_grad]

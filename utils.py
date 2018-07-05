@@ -10,7 +10,6 @@ import text_datasets
 def setup_model(args):
     sys.stderr.write(json.dumps(args.__dict__, indent=2) + '\n')
     setup = json.load(open(args.model_setup))
-    print(type(setup))
     sys.stderr.write(json.dumps(setup, indent=2) + '\n')
 
     # Load a dataset

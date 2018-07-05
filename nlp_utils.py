@@ -1,6 +1,5 @@
-import collections
 import io
-
+import collections
 import numpy
 
 import chainer

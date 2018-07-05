@@ -36,7 +36,17 @@ def bigram_flatten(x):
         xs.append(np.concatenate((x[:i], x[i+2:]), axis=0))
     return xs
 
-def flatten(x):
+def snli_flatten(x):    
+    '''generate version of x with each token removed'''            
+    if cp.get_array_module(x) == cp:
+        x = cp.asnumpy(x)
+    xs = []
+    for i in range(len(x[1][0])):
+        xs.append(np.concatenate((x[1][0][:i], x[1][0][i+1:]), axis=0))
+    xs = [(x[0], hypo) for hypo in xs]        
+    return xs
+
+def flatten(x):    
     '''generate version of x with each token removed'''
     assert x.ndim == 1
     assert x.shape[0] > 1
@@ -48,13 +58,12 @@ def flatten(x):
     return xs
 
 
-def leave_one_out(x, y, scorer, gpu=True, bigrams = False):
-    # flatten
-    assert x.ndim == 1
-
+def leave_one_out(x, y, scorer, gpu=True, bigrams = False, snli = False):    
     if cp.get_array_module(x) == cp:
         x = cp.asnumpy(x)
-    if bigrams:
+    if snli:
+        xs = snli_flatten(x)
+    elif bigrams:
         xs = bigram_flatten(x)
     else:
         xs = flatten(x)
@@ -66,15 +75,14 @@ def leave_one_out(x, y, scorer, gpu=True, bigrams = False):
     scores = scorer(xs, ys)
     return scores
 
-def colorize(words, color_array):
+def colorize(words, color_array, colors = 'RdBu'):
     # words is a list of words
     # color_array is an array of numbers between 0 and 1 of length equal to words
-    cmap = matplotlib.cm.get_cmap('RdBu')
+    cmap = matplotlib.cm.get_cmap(colors)
     template = '<span class="barcode"; style="color: black; background-color: {}">{}</span>'
     colored_string = ''
     for word, color in zip(words, color_array):
-        color = matplotlib.colors.rgb2hex(cmap(color)[:3])
-        print(word)
+        color = matplotlib.colors.rgb2hex(cmap(color)[:3])        
         if word == '<unk>':
             word = '&ltunk&gt'
         colored_string += template.format(color, '&nbsp' + word + '&nbsp')
@@ -94,10 +102,14 @@ def main():
     model, train, test, vocab, setup = setup_model(args)
     reverse_vocab = {v: k for k, v in vocab.items()}
 
+    use_snli = False
     if setup['dataset'] == 'snli' and not setup['combine_snli']:
         converter = convert_snli_seq
+        colors = 'PiYG'
+        use_snli = True
     else:
         converter = convert_seq
+        colors = 'RdBu'
 
     dknn = DkNN(model, args.lsh)
     dknn.build(train, batch_size=setup['batchsize'],
@@ -107,13 +119,20 @@ def main():
     dknn.calibrate(train[:1000], batch_size=setup['batchsize'],
                    converter=converter, device=setup['gpu'])
 
-    for i in range(len(test)): 
-        label = int(test[i][1])
-        text = test[i][0]
-        y, original_score, _, _, _ = dknn.predict([cp.asarray(text)])
-        x = text
+    for i in range(len(test)):             
+        if use_snli:
+            label = int(test[i][2])        
+            text = ([test[i][0]], [test[i][1]])                                 
+            x = text
+        else:
+            label = int(test[i][1])
+            text = [test[i][0]]        
+            x = text[0]
+        y, original_score, _, _, _ = dknn.predict(cp.asarray(text), snli = use_snli)
+        
         y = y[0]
-        scores = leave_one_out(x, y, dknn.get_credibility)
+        scores = leave_one_out(x, y, dknn.get_credibility, snli = use_snli)
+        #scores = leave_one_out(x, y, dknn.get_regular_confidence, snli = use_snli)
         scores = list(enumerate(scores))
         sorted_scores = sorted(scores, key=lambda x: x[1])                          
         
@@ -134,7 +153,8 @@ def main():
         #     if score < 1.0:                
         #         print(score, reverse_vocab[bigrams[idx][0]] + ' ' + reverse_vocab[bigrams[idx][1]])
 
-        # visualize results in heatmap
+
+        # plot sentiment results visualize results in heatmap
         normalized_scores = []
         words = []
         for idx, score in scores[:]:
@@ -144,7 +164,7 @@ def main():
             normalized_scores = [-1 * n for n in normalized_scores]
 
         normalized_scores = [0.5 + n for n in normalized_scores]
-        visual = colorize(words, normalized_scores)        
+        visual = colorize(words, normalized_scores, colors = colors)        
         with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:    
             if label == 1:
                 f.write('Ground Truth Label: Positive')
@@ -157,31 +177,59 @@ def main():
             f.write(visual + "<br>")
 
 
+        # plot snli results
+        # normalized_scores = []
+        # words = []
+        # for idx, score in scores[:]:
+        #     normalized_scores.append(score - original_score[0])                        
+        #     words.append(reverse_vocab[x[idx]])    
+        # normalized_scores = [0.5 + n for n in normalized_scores]
+        # visual = colorize(words, normalized_scores, colors = colors)        
+        # with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:    
+        #     if label == 2:
+        #         f.write('Ground Truth Label: Entailment')
+        #     elif label == 1:
+        #         f.write('Ground Truth Label: Neutral') 
+        #     elif label == 0:
+        #         f.write('Ground Truth Label: Contradiction')                 
+        #     else:
+        #         exit("Label not found")
+
+        #     if y == 2:
+        #         f.write("Prediction: Entailment ({})         ".format(original_score[0]))
+        #     elif y == 1:
+        #         f.write("Prediction: Neutral ({})         ".format(original_score[0]))
+        #     elif y == 0:
+        #         f.write("Prediction: Contradiction ({})         ".format(original_score[0]))                
+        #     else:
+        #         eixt("Prediction Label not found")                
+        #     f.write(visual + "<br>")
+
         # display scores normalized across words
-        normalized_scores = []        
-        for idx, score in scores[:]:
-            normalized_scores.append(score - original_score[0])                                
-        if y == 1:  # flip sign if positive
-            normalized_scores = [-1 * n for n in normalized_scores]
-        total_score = 1e-6
-        for p in normalized_scores:
-            total_score += math.fabs(p)        
-        normalized_scores = [0.5 + n / total_score for n in normalized_scores]
-        visual = colorize(words, normalized_scores)        
-        with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:            
-            if label == 1:
-                f.write('Ground Truth Label: Positive&nbsp;')
-            else:
-                f.write('Ground Truth Label: Negative&nbsp;')
-            if y == 1:
-                f.write("Prediction: Positive ({})         ".format(original_score[0]))
-            else:
-                f.write("Prediction: Negative ({})         ".format(original_score[0]))
-            f.write(visual + "<br>")
+        # normalized_scores = []        
+        # for idx, score in scores[:]:
+        #     normalized_scores.append(score - original_score[0])                                
+        # if y == 1:  # flip sign if positive
+        #     normalized_scores = [-1 * n for n in normalized_scores]
+        # total_score = 1e-6
+        # for p in normalized_scores:
+        #     total_score += math.fabs(p)        
+        # normalized_scores = [0.5 + n / total_score for n in normalized_scores]
+        # visual = colorize(words, normalized_scores)        
+        # with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:            
+        #     if label == 1:
+        #         f.write('Ground Truth Label: Positive&nbsp;')
+        #     else:
+        #         f.write('Ground Truth Label: Negative&nbsp;')
+        #     if y == 1:
+        #         f.write("Prediction: Positive ({})         ".format(original_score[0]))
+        #     else:
+        #         f.write("Prediction: Negative ({})         ".format(original_score[0]))
+        #     f.write(visual + "<br>")
 
 
             # print neighbors
-            neighbors = dknn.get_neighbors([cp.asarray(text)])
+            neighbors = dknn.get_neighbors(cp.asarray(text))
             print('neighbors:')
             f.write('&nbsp;&nbsp;&nbsp;&nbsp;Nearest Neighbor Sentences: <br>')
             for neighbor in neighbors[:5]:

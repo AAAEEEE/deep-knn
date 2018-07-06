@@ -13,30 +13,33 @@ from nlp_utils import convert_seq, convert_snli_seq
 from utils import setup_model
 
 
-'''
-def get_onehot_grad(model, xs, ys=None):
-    if ys is None:
-        with chainer.using_config('train', False):
-            ys = model.predict(xs, argmax=True)
-            ys = F.expand_dims(ys, axis=1)
-            ys = [y for y in ys]
-    loss, exs = model.get_grad(xs, ys)
-    exs_grad = chainer.grad([loss], exs)
-    ex_sections = np.cumsum([ex.shape[0] for ex in exs[:-1]])
-    exs = F.concat(exs, axis=0)
-    exs_grad = F.concat(exs_grad, axis=0)
-    onehot_grad = F.sum(exs_grad * exs, axis=1)
-    onehot_grad = F.split_axis(onehot_grad, ex_sections, axis=0)
-    return onehot_grad
-'''
+# def get_onehot_grad(model, xs, ys=None):
+#     if ys is None:
+#         with chainer.using_config('train', False):
+#             ys = model.predict(xs, argmax=True)
+#             ys = F.expand_dims(ys, axis=1)
+#             ys = [y for y in ys]
+#     loss, exs = model.get_grad(xs, ys)
+#     exs_grad = chainer.grad([loss], exs)
+#     ex_sections = np.cumsum([ex.shape[0] for ex in exs[:-1]])
+#     exs = F.concat(exs, axis=0)
+#     exs_grad = F.concat(exs_grad, axis=0)
+#     onehot_grad = F.sum(exs_grad * exs, axis=1)
+#     onehot_grad = F.split_axis(onehot_grad, ex_sections, axis=0)
+#     return onehot_grad
 
 
-def remove_one(model, xs, n_beams, indices, removed_indices, max_beam_size=5):
+def remove_one(model, xs, n_beams, indices, removed_indices, max_beam_size=5,
+               snli=False):
     n_examples = len(n_beams)
     onehot_grad = [x.data for x in model.get_onehot_grad(xs)]
     xp = cupy.get_array_module(*onehot_grad)
     # don't remove <eos>
     order = [xp.argsort(x[:-1]).tolist() for x in onehot_grad]
+
+    if snli:
+        prem = xs[0]
+        xs = xs[1]
 
     new_xs = []
     new_n_beams = []
@@ -63,32 +66,57 @@ def remove_one(model, xs, n_beams, indices, removed_indices, max_beam_size=5):
         for i, j in coordinates:
             x = xs[i].copy()
             x = xp.concatenate([x[:j], x[j+1:]], axis=0)
-            new_xs.append(x)
+            if snli:
+                new_xs.append([prem[i].copy(), x])
+            else:
+                new_xs.append(x)
             new_indices.append(indices[i][:j] + indices[i][j+1:])
-            new_removed_indices.append(removed_indices[i] + [indices[i][j]])
+            try:
+                new_removed_indices.append(removed_indices[i] + [indices[i][j]])
+            except IndexError:
+                print(i, j, len(indices[i]))
+                return
         new_n_beams.append(len(coordinates))
         start += n_beams[example_idx]
+    if snli:
+        new_xs = list(map(list, zip(*new_xs)))
     return new_xs, new_n_beams, new_indices, new_removed_indices
 
 
-def get_rawr(model, xs, max_beam_size=5):
-    n_examples = len(xs)
-    n_beams = [1 for _ in xs]
-    indices = [list(range(x.shape[0])) for x in xs]
-    removed_indices = [[] for _ in xs]
+def get_rawr(model, xs, max_beam_size=5, snli=False):
+    if snli:
+        # reduce hypothesis
+        n_examples = len(xs[1])
+        n_beams = [1 for _ in xs[1]]
+        indices = [list(range(x.shape[0])) for x in xs[1]]
+        removed_indices = [[] for _ in xs[1]]
 
-    final_xs = [[x.tolist()] for x in xs]
-    final_removed = [[[]] for _ in xs]
-    final_length = [x.shape[0] for x in xs]
+        final_xs = [[x.tolist()] for x in xs[1]]
+        final_removed = [[[]] for _ in xs[1]]
+        final_length = [x.shape[0] for x in xs[1]]
+    else:
+        n_examples = len(xs)
+        n_beams = [1 for _ in xs]
+        indices = [list(range(x.shape[0])) for x in xs]
+        removed_indices = [[] for _ in xs]
+
+        final_xs = [[x.tolist()] for x in xs]
+        final_removed = [[[]] for _ in xs]
+        final_length = [x.shape[0] for x in xs]
 
     with chainer.using_config('train', False):
         ys_0 = model.predict(xs, argmax=True)
 
     while True:
         xs, n_beams, indices, removed_indices = remove_one(
-                model, xs, n_beams, indices, removed_indices, max_beam_size)
+                model, xs, n_beams, indices, removed_indices, max_beam_size,
+                snli)
         with chainer.using_config('train', False):
             ys = model.predict(xs, argmax=True)
+
+        if snli:
+            prem = xs[0]
+            xs = xs[1]
 
         new_n_beams = []
         start = 0
@@ -124,7 +152,11 @@ def get_rawr(model, xs, max_beam_size=5):
         if len(remained_indices) == 0:
             break
 
-        xs = [xs[i] for i in remained_indices]
+        if snli:
+            xs = [(prem[i], xs[i]) for i in remained_indices]
+            xs = list(map(list, zip(*xs)))
+        else:
+            xs = [xs[i] for i in remained_indices]
         indices = [indices[i] for i in remained_indices]
         removed_indices = [removed_indices[i] for i in remained_indices]
         n_beams = new_n_beams
@@ -149,7 +181,8 @@ def main():
     args = parser.parse_args()
 
     model, train, test, vocab, setup = setup_model(args)
-    if setup['dataset'] == 'snli' and not setup['combine_snli']:
+    is_snli = setup['dataset'] == 'snli'
+    if is_snli and not setup['combine_snli']:
         converter = convert_snli_seq
     else:
         converter = convert_seq
@@ -170,29 +203,50 @@ def main():
         batch = converter(batch, device=args.gpu)
         xs = batch['xs']
         reduced_xs, removed_indices = get_rawr(
-                model, xs, max_beam_size=max_beam_size)
-
-        xp = cupy.get_array_module(*xs)
+                model, xs, max_beam_size=max_beam_size,
+                snli=is_snli)
         n_finals = [len(r) for r in reduced_xs]
-        reduced_xs = list(itertools.chain(*reduced_xs))
+        batch_size = len(xs[0]) if is_snli else len(xs)
+
+        assert len(reduced_xs) == batch_size
+
+        xp = cupy.get_array_module(xs[0][0])
+        if is_snli:
+            prem = xs[0]
+            _reduced_xs = []
+            for i in range(batch_size):
+                for x in reduced_xs[i]:
+                    _reduced_xs.append([prem[i].copy(), xp.asarray(x)])
+            reduced_xs = list(map(list, zip(*_reduced_xs)))
+        else:
+            reduced_xs = list(itertools.chain(*reduced_xs))
+            reduced_xs = [xp.asarray(x) for x in reduced_xs]
+        # reduced_xs = converter(reduced_xs, device=args.gpu, with_label=False)
         removed_indices = list(itertools.chain(*removed_indices))
-        reduced_xs = [xp.asarray(x) for x in reduced_xs]
-        reduced_xs = converter(reduced_xs, device=args.gpu, with_label=False)
         with chainer.using_config('train', False):
             ss_0 = xp.asnumpy(model.predict(xs, softmax=True))
             ss_1 = xp.asnumpy(model.predict(reduced_xs, softmax=True))
             ys_0 = np.argmax(ss_0, axis=1)
             ys_1 = np.argmax(ss_1, axis=1)
 
+        if is_snli:
+            xs = list(map(list, zip(*xs)))
+            xs = [(a.tolist(), b.tolist()) for a, b in xs]
+            reduced_xs = list(map(list, zip(*reduced_xs)))
+            reduced_xs = [(a.tolist(), b.tolist()) for a, b in reduced_xs]
+        else:
+            xs = [x.tolist() for x in xs]
+            reduced_xs = [x.tolist() for x in reduced_xs]
+
         start = 0
         for example_idx in range(len(xs)):
-            oi = xs[example_idx].tolist()  # original input
+            oi = xs[example_idx]  # original input
             op = int(ys_0[example_idx])  # original predictoin
             oos = ss_0[example_idx]  # original output distribution
             label = int(batch['ys'][example_idx])
             checkpoint.append([])
             for i in range(start, start + n_finals[example_idx]):
-                ri = reduced_xs[i].tolist()
+                ri = reduced_xs[i]
                 rp = int(ys_1[i])  # reduced prediction
                 rs = ss_1[i]  # reduced output distribution
                 rr = removed_indices[i]

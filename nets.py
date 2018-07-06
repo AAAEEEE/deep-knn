@@ -189,6 +189,35 @@ class SNLIClassifier(chainer.Chain):
         reporter.report({'accuracy': accuracy.data}, self)
         return loss
 
+    def get_onehot_grad(self, xs, ys=None):
+        if ys is None:
+            with chainer.using_config('train', False):
+                ys = self.predict(xs, argmax=True)
+        assert not self.combine
+        u, exs_prem = self.encoder.get_grad(xs[0])
+        v, exs_hypo = self.encoder.get_grad(xs[1])
+        encodings = F.concat((u, v, F.absolute(u-v), u*v), axis=1)
+        outputs = self.output(self.mlp(encodings, no_dropout=True))
+        loss = F.softmax_cross_entropy(outputs, ys)
+
+        exs = exs_hypo
+        lengths = [len(x) for x in xs[1]]
+
+        if isinstance(exs, tuple):
+            exs_grad = chainer.grad([loss], exs)
+            ex_sections = np.cumsum([ex.shape[0] for ex in exs[:-1]])
+            exs = F.concat(exs, axis=0)
+            exs_grad = F.concat(exs_grad, axis=0)
+            onehot_grad = F.sum(exs_grad * exs, axis=1)
+            onehot_grad = F.split_axis(onehot_grad, ex_sections, axis=0)
+        else:
+            exs_grad = chainer.grad([loss], [exs])[0]
+            # (batch_size, n_dim, max_length, 1)
+            assert exs_grad.shape == exs.shape
+            onehot_grad = F.squeeze(F.sum(exs_grad * exs, 1), 2)
+            onehot_grad = [x[:l] for x, l in zip(onehot_grad, lengths)]
+        return onehot_grad
+
     def predict(self, xs, softmax=False, argmax=False, dknn=False):
         dknn_layers = []
         if self.combine:

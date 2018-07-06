@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import argparse
 import numpy as np
-#import cupy as cp
+# import cupy as cp
 import warnings
 from functools import partial
 import matplotlib
@@ -51,12 +51,12 @@ def flatten(x):
     return xs
 
 
-def leave_one_out(dknn, x, bigrams=False, snli=False, use_credibility = True):
+def leave_one_out(dknn, x, bigrams=False, snli=False, use_credibility=True):
     ys, original_score, _, _, _ = dknn.predict([x], snli=snli)
     y = ys[0]
     original_score = original_score[0]
     # gpu = cp.get_array_module(x) == cp
-    #x = cp.asnumpy(x)
+    # x = cp.asnumpy(x)
     if snli:
         xs = snli_flatten(x)
     elif bigrams:
@@ -70,15 +70,15 @@ def leave_one_out(dknn, x, bigrams=False, snli=False, use_credibility = True):
     # rank
     if use_credibility:
         # scores = dknn.get_credibility(xs, ys)
-        scores = []        
+        scores = []
         for input_x in xs:
-            scores.append(dknn.get_neighbor_change([input_x], [x]))        
+            scores.append(dknn.get_neighbor_change([input_x], [x]))
     else:
         scores = dknn.get_regular_confidence(xs, ys)
     return y, original_score, scores
 
 
-def vanilla_grad(model, x, bigrams=False, snli=False, use_credibility = False):
+def vanilla_grad(model, x, bigrams=False, snli=False, use_credibility=False):
     if bigrams:
         warnings.warn('bigrams not supported for vanilla grad')
     if snli:
@@ -116,7 +116,7 @@ def main():
     parser.add_argument('--lsh', action='store_true', default=False,
                         help='If true, uses locally sensitive hashing \
                               (with k=10 NN) for NN search.')
-    parser.add_argument('--interp_method', type=str, default = 'dknn',
+    parser.add_argument('--interp_method', type=str, default='dknn',
                         help='choose dknn, softmax, or grad')
 
     args = parser.parse_args()
@@ -152,27 +152,27 @@ def main():
 
         if args.interp_method == 'dknn' or args.interp_method == 'softmax':
             ranker = partial(leave_one_out, dknn)
-        elif args.interp_method == 'grad': 
+        elif args.interp_method == 'grad':
             ranker = partial(vanilla_grad, model)
         else:
             exit("Method")
 
-    #for i in range(len(test)):
+    # for i in range(len(test)):
         if use_snli:
             # FIXME
             label = int(test[i][2])
             x = ([test[i][0]], [test[i][1]])
         else:
             text, label = test[i]
-            x = text#cp.asarray(text)
-            y = label#cp.asarray(label)
-     
+            x = text  # cp.asarray(text)
+            y = label  #cp.asarray(label)
+
         if args.interp_method == 'dknn':
             use_cred = True
         else:
             use_cred = False
 
-        prediction, original_score, scores = ranker(x, snli=use_snli, use_credibility = use_cred)
+        prediction, original_score, scores = ranker(x, snli=use_snli, use_credibility=use_cred)
         sorted_scores = sorted(list(enumerate(scores)), key=lambda x: x[1])
 
         print(' '.join(reverse_vocab[w] for w in text))
@@ -192,11 +192,11 @@ def main():
         #     if score < 1.0:
         #         print(score, reverse_vocab[bigrams[idx][0]] + ' ' + reverse_vocab[bigrams[idx][1]])
 
-        # plot sentiment results visualize results in heatmap           
+        # plot sentiment results visualize results in heatmap
         normalized_scores = []
         words = []
         for idx, score in enumerate(scores):
-            if args.interp_method == 'dknn' or args.interp_method == 'softmax': 
+            if args.interp_method == 'dknn' or args.interp_method == 'softmax':
                 normalized_scores.append(score - original_score)  # for l10 drop in score
             else:
                 normalized_scores.append(score)  # for grad its already normalized
@@ -206,37 +206,37 @@ def main():
 
         # normalizing for vanilla grad
         # normalize positive and negatives seperately
-        #if args.interp_method == 'grad':
-        total_score_pos = 1e-6    # 1e-6 for case where all positive/neg scores are 0  
+        # if args.interp_method == 'grad':
+        total_score_pos = 1e-6    # 1e-6 for case where all positive/neg scores are 0
         total_score_neg = 1e-6
         for idx, s in enumerate(normalized_scores):
             if s < 0:
-               total_score_neg = total_score_neg + math.fabs(s)
+                total_score_neg = total_score_neg + math.fabs(s)
             else:
-               total_score_pos = total_score_pos + s
+                total_score_pos = total_score_pos + s
         for idx, s in enumerate(normalized_scores):
-           if s < 0:
-               normalized_scores[idx] = (s / total_score_neg) / 2
-           else:
-               normalized_scores[idx] = (s / total_score_pos) / 2
+            if s < 0:
+                normalized_scores[idx] = (s / total_score_neg) / 2
+            else:
+                normalized_scores[idx] = (s / total_score_pos) / 2
 
         # normalize total score for vanilla grad
         # if args.interp_method == 'grad':
-        #     total_score = 0            
-        #     for idx, s in enumerate(normalized_scores):                
-        #         total_score = total_score + math.fabs(s)                
-        #     for idx, s in enumerate(normalized_scores):               
-        #         normalized_scores[idx] = (s / total_score) / 2  
+        #     total_score = 0
+        #     for idx, s in enumerate(normalized_scores):
+        #         total_score = total_score + math.fabs(s)
+        #     for idx, s in enumerate(normalized_scores):
+        #         normalized_scores[idx] = (s / total_score) / 2
 
-        normalized_scores = [0.5 + n for n in normalized_scores] # center scores
+        normalized_scores = [0.5 + n for n in normalized_scores]  # center scores
         visual = colorize(words, normalized_scores, colors=colors)
-        with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:            
+        with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
             # if args.interp_method == 'dknn':
             #     f.write('DkNN Leave-One-Out&nbsp;')
             # elif args.interp_method == 'softmax':
             #     f.write('Softmax Leave-One-Out&nbsp;')
             # else:
-            #     f.write('Vanilla Gradient&nbsp;') 
+            #     f.write('Vanilla Gradient&nbsp;')
 
             # if label == 1:
             #     f.write('Label: Positive&nbsp;')

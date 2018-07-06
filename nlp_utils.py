@@ -124,5 +124,5 @@ def convert_snli_seq(batch, device=None, with_label=True):
                        to_device_batch([x1 for _, x1, _ in batch])),
                 'ys': to_device_batch([y for _, _, y in batch])}
     else:
-        return (to_device_batch([x0 for x0, _, _ in batch]),
-                to_device_batch([x1 for _, x1, _ in batch]))
+        return (to_device_batch([x0 for x0, _ in batch]),
+                to_device_batch([x1 for _, x1 in batch]))

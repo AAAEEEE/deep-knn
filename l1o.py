@@ -6,6 +6,7 @@ import warnings
 from functools import partial
 import matplotlib
 import matplotlib.pyplot as plt
+import math
 
 import chainer
 import chainer.functions as F
@@ -50,7 +51,7 @@ def flatten(x):
     return xs
 
 
-def leave_one_out(dknn, x, bigrams=False, snli=False):
+def leave_one_out(dknn, x, bigrams=False, snli=False, use_credibility = True):
     ys, original_score, _, _, _ = dknn.predict([x], snli=snli)
     y = ys[0]
     original_score = original_score[0]
@@ -67,12 +68,14 @@ def leave_one_out(dknn, x, bigrams=False, snli=False):
     ys = [int(y) for _ in xs]
 
     # rank
-    scores = dknn.get_credibility(xs, ys)
-    # scores = dknn.get_regular_confidence(xs, ys)
+    if use_credibility:
+        scores = dknn.get_credibility(xs, ys)
+    else:
+        scores = dknn.get_regular_confidence(xs, ys)
     return y, original_score, scores
 
 
-def vanilla_grad(model, x, bigrams=False, snli=False):
+def vanilla_grad(model, x, bigrams=False, snli=False, use_credibility = False):
     if bigrams:
         warnings.warn('bigrams not supported for vanilla grad')
     if snli:
@@ -110,6 +113,9 @@ def main():
     parser.add_argument('--lsh', action='store_true', default=False,
                         help='If true, uses locally sensitive hashing \
                               (with k=10 NN) for NN search.')
+    parser.add_argument('--interp-method', type=str, default = 'dknn',
+                        help='choose dknn, softmax, or grad')
+
     args = parser.parse_args()
 
     model, train, test, vocab, setup = setup_model(args)
@@ -132,8 +138,12 @@ def main():
     dknn.calibrate(train[:1000], batch_size=setup['batchsize'],
                    converter=converter, device=args.gpu)
 
-    ranker = partial(leave_one_out, dknn)
-    # ranker = partial(vanilla_grad, model)
+    if args.interp_method == 'dknn' or args.interp_method == 'softmax':
+        ranker = partial(leave_one_out, dknn)
+    elif args.interp_method == 'grad': 
+        ranker = partial(vanilla_grad, model)
+    else:
+        exit("Method")
 
     for i in range(len(test)):
         if use_snli:
@@ -145,7 +155,13 @@ def main():
             x = cp.asarray(text)
             y = cp.asarray(label)
 
-        prediction, original_score, scores = ranker(x, snli=use_snli)
+     
+        if args.interp_method == 'dknn':
+            use_cred = True
+        else:
+            use_cred = False
+
+        prediction, original_score, scores = ranker(x, snli=use_snli, use_credibility = use_cred)
         sorted_scores = sorted(list(enumerate(scores)), key=lambda x: x[1])
 
         print(' '.join(reverse_vocab[w] for w in text))
@@ -153,8 +169,7 @@ def main():
         print('prediction: {} ({})'.format(prediction, original_score))
 
         for idx, score in sorted_scores:
-            if score < original_score:
-                print(score, reverse_vocab[text[idx]])
+            print(score, reverse_vocab[text[idx]])
 
         # print()
         # # bigrams
@@ -167,17 +182,36 @@ def main():
         #         print(score, reverse_vocab[bigrams[idx][0]] + ' ' + reverse_vocab[bigrams[idx][1]])
 
         # plot sentiment results visualize results in heatmap
+
+        # normalizing for vanilla grad
+        if args.interp_method == 'grad':
+            total_score_pos = 0
+            total_score_neg = 0
+            for idx, s in enumerate(scores):
+                if s < 0:
+                   total_score_neg = total_score_neg + math.fabs(s)
+                else:
+                   total_score_pos = total_score_pos + s
+            for idx, s in enumerate(scores):
+               if s < 0:
+                   scores[idx] = (s / total_score_neg) / 2
+               else:
+                   scores[idx] = (s / total_score_pos) / 2
+
         normalized_scores = []
         words = []
         for idx, score in enumerate(scores):
-            normalized_scores.append(score - original_score)
+            if args.interp_method == 'dknn' or args.interp_method == 'softmax': 
+                normalized_scores.append(score - original_score)  # for l10 drop in score
+            else:
+                normalized_scores.append(score)  # for grad its already normalized
             words.append(reverse_vocab[text[idx]])
         if prediction == 1:  # flip sign if positive
             normalized_scores = [-1 * n for n in normalized_scores]
 
         normalized_scores = [0.5 + n for n in normalized_scores]
         visual = colorize(words, normalized_scores, colors=colors)
-        with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
+        with open(setup['dataset'] + '_' + setup['model'] + '_' + args.interp_method +  '_colorize.html', 'a') as f:
             if label == 1:
                 f.write('Ground Truth Label: Positive')
             else:
@@ -239,16 +273,16 @@ def main():
         #     f.write(visual + "<br>")
 
             # print neighbors
-            neighbors = dknn.get_neighbors([x])
-            print('neighbors:')
-            f.write('&nbsp;&nbsp;&nbsp;&nbsp;Nearest Neighbor Sentences: <br>')
-            for neighbor in neighbors[:5]:
-                curr_nearest_neighbor_input_sentence = '     '
-                for word in train[neighbor][0]:
-                    curr_nearest_neighbor_input_sentence += reverse_vocab[word] + ' '
-                print(curr_nearest_neighbor_input_sentence)
-                f.write('&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' + curr_nearest_neighbor_input_sentence + '<br>')
-            f.write('<br>')
+        #    neighbors = dknn.get_neighbors([x])
+        #    print('neighbors:')
+        #    f.write('&nbsp;&nbsp;&nbsp;&nbsp;Nearest Neighbor Sentences: <br>')
+        #    for neighbor in neighbors[:5]:
+        #        curr_nearest_neighbor_input_sentence = '     '
+        #        for word in train[neighbor][0]:
+        #            curr_nearest_neighbor_input_sentence += reverse_vocab[word] + ' '
+        #        print(curr_nearest_neighbor_input_sentence)
+        #        f.write('&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' + curr_nearest_neighbor_input_sentence + '<br>')
+        #    f.write('<br>')
 
             print()
             print()

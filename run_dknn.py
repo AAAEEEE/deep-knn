@@ -89,6 +89,15 @@ class DkNN:
                 cnt_y = preds[labels[j]]
                 self._A.append(cnt_y / cnt_all)
 
+    def get_neighbor_change(self, xs, x):
+        full_length_neighbors = self.get_neighbors(x)        
+        l10_neighbors = self.get_neighbors(xs)        
+        overlap = 0.0
+        for i in l10_neighbors:
+            if i in full_length_neighbors:
+                overlap = overlap + 1
+        return overlap / len(l10_neighbors)
+
     def get_neighbors(self, xs):
         assert self.tree_list is not None
         assert self.label_list is not None

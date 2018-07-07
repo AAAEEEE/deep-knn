@@ -357,7 +357,7 @@ def main():
         #        f.write('&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' + curr_nearest_neighbor_input_sentence + '<br>')
         #    f.write('<br>')
 
-            f.write('<tr>')
+            f.write('</tr>')
             print()
             print()
 

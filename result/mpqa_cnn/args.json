@@ -1,1 +1,0 @@
-{"batchsize": 128, "epoch": 10, "gpu": -1, "out": "result", "unit": 300, "layer": 3, "dropout": 0.4, "combine_snli": false, "dataset": "mpqa", "model": "cnn", "char_based": false, "word_vectors": "glove.840B.300d.txt", "vocab_path": "result/mpqa_cnn/vocab.json", "model_path": "result/mpqa_cnn/best_model.npz", "n_class": 2, "datetime": "2018-07-03 20:54:20.248329"}

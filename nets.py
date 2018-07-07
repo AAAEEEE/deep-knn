@@ -226,7 +226,6 @@ class SNLIClassifier(chainer.Chain):
             else:
                 encodings = self.encoder(xs, dknn=False)
         else:
-            #print(xs)            
             u = self.encoder(xs[0], dknn=False)
             v = self.encoder(xs[1], dknn=False)            
             encodings = F.concat((u, v, F.absolute(u-v), u*v), axis=1)
@@ -249,7 +248,6 @@ class SNLIClassifier(chainer.Chain):
             return outputs, dknn_layers
         else:
             return outputs
-
 
 class RNNEncoder(chainer.Chain):
 

@@ -124,7 +124,7 @@ class DkNN:
                         neighbors.append(nn[1])
                 else:  # use kdtree
                     _, knn = self.tree_list[layer_id].query([hidden], k=75)
-                    neighbors = knn[0]
+                    neighbors = knn[0]             # This is the setting where you only take the last layer
         return neighbors
 
     def __call__(self, xs):

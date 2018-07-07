@@ -28,15 +28,19 @@ from run_dknn import DkNN
 #     return xs
 
 
-# def snli_flatten(x):
-#     '''generate version of x with each token removed'''
-#     if cp.get_array_module(x) == cp:
-#         x = cp.asnumpy(x)
-#     xs = []
-#     for i in range(len(x[1][0])):
-#         xs.append(np.concatenate((x[1][0][:i], x[1][0][i+1:]), axis=0))
-#     xs = [(x[0], hypo) for hypo in xs]
-#     return xs
+def snli_flatten(x):
+    '''generate version of x with each token removed'''
+    # if cp.get_array_module(x) == cp:
+    #     x = cp.asnumpy(x)
+    reduced_hypo = []
+    prem = []    
+    for i in range(len(x[1][0])):
+        reduced_hypo.append(np.concatenate((x[1][0][:i], x[1][0][i+1:]), axis=0))
+        prem.append(x[0][0])
+
+    xs = (prem, reduced_hypo)    
+    #xs = [(x[0], [hypo]) for hypo in xs]
+    return xs
 
 
 def flatten(x):
@@ -45,36 +49,45 @@ def flatten(x):
     assert x.shape[0] > 1
     # if cp.get_array_module(x) == cp:
     #     x = cp.asnumpy(x)
-    xs = []
+    xs = []    
     for i in range(x.shape[0]):
         xs.append(np.concatenate((x[:i], x[i+1:]), axis=0))
     return xs
 
 
 def leave_one_out(dknn, x, bigrams=False, snli=False, use_credibility=True):
-    ys, original_score, _, _, _ = dknn.predict([x], snli=snli)
+    if not snli:
+        x = [x]
+    ys, original_score, _, reg_pred, reg_conf = dknn.predict(x, snli=snli)
+    if not snli:
+        x = x[0]
     y = ys[0]
-    original_score = original_score[0]
+    
     # gpu = cp.get_array_module(x) == cp
     # x = cp.asnumpy(x)
     if snli:
         xs = snli_flatten(x)
+        ys = [int(y) for _ in xs[0]]
     elif bigrams:
         xs = bigram_flatten(x)
+        ys = [int(y) for _ in xs]
     else:
         xs = flatten(x)
+        ys = [int(y) for _ in xs]
     # if gpu:
     #     xs = [cp.asarray(x) for x in xs]
-    ys = [int(y) for _ in xs]
-
+    
     # rank
     if use_credibility:
-        # scores = dknn.get_credibility(xs, ys)
-        scores = []
-        for input_x in xs:
-            scores.append(dknn.get_neighbor_change([input_x], [x]))
+        scores = dknn.get_credibility(xs, ys, use_snli=snli) 
+        original_score = original_score[0]
+        # scores = []
+        # for input_x in xs:
+        #     scores.append(dknn.get_neighbor_change([input_x], [x]))
     else:
         scores = dknn.get_regular_confidence(xs, ys)
+        original_score = reg_conf[0]
+
     return y, original_score, scores
 
 
@@ -141,27 +154,25 @@ def main():
     dknn.calibrate(train[:1000], batch_size=setup['batchsize'],
                    converter=converter, device=args.gpu)
 
-    for j in range(len(test) * 3):
-        i = j // 3
-        if args.interp_method == 'dknn':
-            args.interp_method = 'softmax'
-        elif args.interp_method == 'softmax':
-            args.interp_method = 'grad'
-        elif args.interp_method == 'grad':
-            args.interp_method = 'dknn'
+    # for j in range(len(test) * 3):
+    #     i = j // 3
+    #     if args.interp_method == 'dknn':
+    #         args.interp_method = 'softmax'
+    #     elif args.interp_method == 'softmax':
+    #         args.interp_method = 'grad'
+    #     elif args.interp_method == 'grad':
+    #         args.interp_method = 'dknn'
+    if args.interp_method == 'dknn' or args.interp_method == 'softmax':
+        ranker = partial(leave_one_out, dknn)
+    elif args.interp_method == 'grad':
+        ranker = partial(vanilla_grad, model)
+    else:
+        exit("Method")
 
-        if args.interp_method == 'dknn' or args.interp_method == 'softmax':
-            ranker = partial(leave_one_out, dknn)
-        elif args.interp_method == 'grad':
-            ranker = partial(vanilla_grad, model)
-        else:
-            exit("Method")
-
-    # for i in range(len(test)):
-        if use_snli:
-            # FIXME
-            label = int(test[i][2])
-            x = ([test[i][0]], [test[i][1]])
+    for i in range(len(test)):
+        if use_snli:            
+            prem, hypo, label = test[i]            
+            x = ([prem], [hypo])                        
         else:
             text, label = test[i]
             x = text  # cp.asarray(text)
@@ -172,16 +183,22 @@ def main():
         else:
             use_cred = False
 
-        prediction, original_score, scores = ranker(x, snli=use_snli, use_credibility=use_cred)
+        prediction, original_score, scores = ranker(x, snli=use_snli, use_credibility=use_cred)            
         sorted_scores = sorted(list(enumerate(scores)), key=lambda x: x[1])
-
-        print(' '.join(reverse_vocab[w] for w in text))
         print('label: {}'.format(label[0]))
         print('prediction: {} ({})'.format(prediction, original_score))
 
+        if use_snli:
+            print('Premise: ' + ' '.join(reverse_vocab[w] for w in prem))
+            print('Hypothesis: ' + ' '.join(reverse_vocab[w] for w in hypo))
+        else:
+            print(' '.join(reverse_vocab[w] for w in text))
+        
         for idx, score in sorted_scores:
-            print(score, reverse_vocab[text[idx]])
-
+            if use_snli:
+                print(score, reverse_vocab[hypo[idx]])
+            else:
+                print(score, reverse_vocab[text[idx]])                
         # print()
         # # bigrams
         # scores = ranker(x, y, bigrams=True)

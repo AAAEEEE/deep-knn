@@ -162,15 +162,19 @@ class DkNN:
             knn_logits .append(neighbor_labels)
         return reg_logits, knn_logits
 
-    def get_credibility(self, xs, ys, calibrated=False):
+    def get_credibility(self, xs, ys, calibrated=False, use_snli=False):
         assert self.tree_list is not None
         assert self.label_list is not None
 
         batch_size = len(xs)
+        if use_snli:
+            batch_size = len(xs[0])        
+
         _, knn_logits = self(xs)
 
         ys = [int(y) for y in ys]
         knn_cred = []
+
         for i in range(batch_size):
             cnt_all = len(knn_logits[i])
             cnts = dict(Counter(knn_logits[i]).most_common())
@@ -190,10 +194,10 @@ class DkNN:
         assert self.tree_list is not None
         assert self.label_list is not None
 
-        batch_size = len(xs)
+        batch_size = len(xs)                
         if snli:
-            batch_size = int(batch_size / 2)
-
+            batch_size = len(xs[0])
+        
         reg_logits, knn_logits = self(xs)
 
         reg_pred = F.argmax(reg_logits, 1).data.tolist()

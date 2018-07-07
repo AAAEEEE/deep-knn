@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import argparse
 import numpy as np
-# import cupy as cp
+import cupy as cp
 import warnings
 from functools import partial
 import matplotlib
@@ -30,16 +30,15 @@ from run_dknn import DkNN
 
 def snli_flatten(x):
     '''generate version of x with each token removed'''
-    # if cp.get_array_module(x) == cp:
-    #     x = cp.asnumpy(x)
+    if cp.get_array_module(x) == cp:
+        x = cp.asnumpy(x)
     reduced_hypo = []
     prem = []    
     for i in range(len(x[1][0])):
         reduced_hypo.append(np.concatenate((x[1][0][:i], x[1][0][i+1:]), axis=0))
         prem.append(x[0][0])
 
-    xs = (prem, reduced_hypo)    
-    #xs = [(x[0], [hypo]) for hypo in xs]
+    xs = (prem, reduced_hypo)        
     return xs
 
 
@@ -47,8 +46,8 @@ def flatten(x):
     '''generate version of x with each token removed'''
     assert x.ndim == 1
     assert x.shape[0] > 1
-    # if cp.get_array_module(x) == cp:
-    #     x = cp.asnumpy(x)
+    if cp.get_array_module(x) == cp:
+        x = cp.asnumpy(x)
     xs = []    
     for i in range(x.shape[0]):
         xs.append(np.concatenate((x[:i], x[i+1:]), axis=0))
@@ -61,10 +60,14 @@ def leave_one_out(dknn, x, bigrams=False, snli=False, use_credibility=True):
     ys, original_score, _, reg_pred, reg_conf = dknn.predict(x, snli=snli)
     if not snli:
         x = x[0]
-    y = ys[0]
     
-    # gpu = cp.get_array_module(x) == cp
-    # x = cp.asnumpy(x)
+    if use_credibility:
+        y = ys[0]
+    else:
+        y = reg_pred[0]    
+
+    gpu = cp.get_array_module(x) == cp
+    x = cp.asnumpy(x)
     if snli:
         xs = snli_flatten(x)
         ys = [int(y) for _ in xs[0]]
@@ -74,8 +77,8 @@ def leave_one_out(dknn, x, bigrams=False, snli=False, use_credibility=True):
     else:
         xs = flatten(x)
         ys = [int(y) for _ in xs]
-    # if gpu:
-    #     xs = [cp.asarray(x) for x in xs]
+    if gpu:
+        xs = [cp.asarray(x) for x in xs]
     
     # rank
     if use_credibility:
@@ -154,29 +157,28 @@ def main():
     dknn.calibrate(train[:1000], batch_size=setup['batchsize'],
                    converter=converter, device=args.gpu)
 
-    # for j in range(len(test) * 3):
-    #     i = j // 3
-    #     if args.interp_method == 'dknn':
-    #         args.interp_method = 'softmax'
-    #     elif args.interp_method == 'softmax':
-    #         args.interp_method = 'grad'
-    #     elif args.interp_method == 'grad':
-    #         args.interp_method = 'dknn'
-    if args.interp_method == 'dknn' or args.interp_method == 'softmax':
-        ranker = partial(leave_one_out, dknn)
-    elif args.interp_method == 'grad':
-        ranker = partial(vanilla_grad, model)
-    else:
-        exit("Method")
+    for j in range(len(test) * 3):
+        i = j // 3
+        if args.interp_method == 'dknn':
+            args.interp_method = 'softmax'
+        elif args.interp_method == 'softmax':
+            args.interp_method = 'grad'
+        elif args.interp_method == 'grad':
+            args.interp_method = 'dknn'
+        if args.interp_method == 'dknn' or args.interp_method == 'softmax':
+            ranker = partial(leave_one_out, dknn)
+        elif args.interp_method == 'grad':
+            ranker = partial(vanilla_grad, model)
+        else:
+            exit("Method")
 
-    for i in range(len(test)):
+#    for i in range(len(test)):
         if use_snli:            
             prem, hypo, label = test[i]            
             x = ([prem], [hypo])                        
         else:
             text, label = test[i]
-            x = text  # cp.asarray(text)
-            y = label  #cp.asarray(label)
+            x = cp.asarray(text) #text   
 
         if args.interp_method == 'dknn':
             use_cred = True
@@ -259,21 +261,21 @@ def main():
         normalized_scores = [0.5 + n for n in normalized_scores]  # center scores
         visual = colorize(words, normalized_scores, colors=colors)
         with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
-            # if args.interp_method == 'dknn':
-            #     f.write('DkNN Leave-One-Out&nbsp;')
-            # elif args.interp_method == 'softmax':
-            #     f.write('Softmax Leave-One-Out&nbsp;')
-            # else:
-            #     f.write('Vanilla Gradient&nbsp;')
+            if args.interp_method == 'dknn':
+                f.write('DkNN Leave-One-Out&nbsp;')
+            elif args.interp_method == 'softmax':
+                f.write('Softmax Leave-One-Out&nbsp;')
+            else:
+                f.write('Vanilla Gradient&nbsp;')
 
-            # if label == 1:
-            #     f.write('Label: Positive&nbsp;')
-            # else:
-            #     f.write('Label: Negative&nbsp;')
-            # if y == 1:
-            #     f.write("Prediction: Positive ({0:.2f})         ".format(original_score))
-            # else:
-            #     f.write("Prediction: Negative ({0:.2f})         ".format(original_score))
+            if label == 1:
+                f.write('Label: Positive&nbsp;')
+            else:
+                f.write('Label: Negative&nbsp;')
+            if prediction == 1:
+                f.write("Prediction: Positive ({0:.2f})         ".format(original_score))
+            else:
+                f.write("Prediction: Negative ({0:.2f})         ".format(original_score))
             
             if use_snli:
                 f.write(' '.join(reverse_vocab[w] for w in prem) + '<br>')
@@ -298,11 +300,11 @@ def main():
         #     else:
         #         exit("Label not found")
 
-        #     if y == 2:
+        #     if prediction == 2:
         #         f.write("Prediction: Entailment ({})         ".format(original_score))
-        #     elif y == 1:
+        #     elif prediction == 1:
         #         f.write("Prediction: Neutral ({})         ".format(original_score))
-        #     elif y == 0:
+        #     elif prediction == 0:
         #         f.write("Prediction: Contradiction ({})         ".format(original_score))
         #     else:
         #         eixt("Prediction Label not found")
@@ -312,7 +314,7 @@ def main():
         # normalized_scores = []
         # for idx, score in scores[:]:
         #     normalized_scores.append(score - original_score)
-        # if y == 1:  # flip sign if positive
+        # if prediction == 1:  # flip sign if positive
         #     normalized_scores = [-1 * n for n in normalized_scores]
         # total_score = 1e-6
         # for p in normalized_scores:
@@ -324,7 +326,7 @@ def main():
         #         f.write('Ground Truth Label: Positive&nbsp;')
         #     else:
         #         f.write('Ground Truth Label: Negative&nbsp;')
-        #     if y == 1:
+        #     if prediction == 1:
         #         f.write("Prediction: Positive ({})         ".format(original_score))
         #     else:
         #         f.write("Prediction: Negative ({})         ".format(original_score))

@@ -235,7 +235,7 @@ def main():
                 else:
                     normalized_scores.append(score)  # for grad its not a drop
                 words.append(reverse_vocab[hypo[idx]])    
-            normalized_scores = [-1 * n for n in normalized_scores]
+            normalized_scores = [-1 * n for n in normalized_scores] # flip sign so green is drop
 
 
         # normalizing for vanilla grad

@@ -193,9 +193,9 @@ class SNLIClassifier(chainer.Chain):
         if ys is None:
             with chainer.using_config('train', False):
                 ys = self.predict(xs, argmax=True)
-        assert not self.combine
+        assert not self.combine        
         u, exs_prem = self.encoder.get_grad(xs[0])
-        v, exs_hypo = self.encoder.get_grad(xs[1])
+        v, exs_hypo = self.encoder.get_grad(xs[1])        
         encodings = F.concat((u, v, F.absolute(u-v), u*v), axis=1)
         outputs = self.output(self.mlp(encodings, no_dropout=True))
         loss = F.softmax_cross_entropy(outputs, ys)
@@ -226,8 +226,9 @@ class SNLIClassifier(chainer.Chain):
             else:
                 encodings = self.encoder(xs, dknn=False)
         else:
+            #print(xs)            
             u = self.encoder(xs[0], dknn=False)
-            v = self.encoder(xs[1], dknn=False)
+            v = self.encoder(xs[1], dknn=False)            
             encodings = F.concat((u, v, F.absolute(u-v), u*v), axis=1)
             dknn_layers = [encodings]
         # encodings = F.dropout(encodings, ratio=self.dropout)

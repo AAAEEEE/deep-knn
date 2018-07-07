@@ -154,28 +154,28 @@ def main():
                converter=converter, device=args.gpu)
 
     # need to select calibration data more carefully
-    dknn.calibrate(train[:1000], batch_size=setup['batchsize'],
+    dknn.calibrate(train[:2], batch_size=setup['batchsize'],
                    converter=converter, device=args.gpu)
 
     with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
         f.write('<table style="width:100%"> <tr> <th>Method</th> <th>Label</th> <th>Prediction</th> <th>Text</th> </tr>')
 
-    for j in range(len(test) * 3):
-        i = j // 3
-        if args.interp_method == 'dknn':
-            args.interp_method = 'softmax'
-        elif args.interp_method == 'softmax':
-            args.interp_method = 'grad'
-        elif args.interp_method == 'grad':
-            args.interp_method = 'dknn'
-        if args.interp_method == 'dknn' or args.interp_method == 'softmax':
-            ranker = partial(leave_one_out, dknn)
-        elif args.interp_method == 'grad':
-            ranker = partial(vanilla_grad, model)
-        else:
-            exit("Method")
+    # for j in range(len(test) * 3):
+    #     i = j // 3
+    #     if args.interp_method == 'dknn':
+    #         args.interp_method = 'softmax'
+    #     elif args.interp_method == 'softmax':
+    #         args.interp_method = 'grad'
+    #     elif args.interp_method == 'grad':
+    #         args.interp_method = 'dknn'
+    if args.interp_method == 'dknn' or args.interp_method == 'softmax':
+        ranker = partial(leave_one_out, dknn)
+    elif args.interp_method == 'grad':
+        ranker = partial(vanilla_grad, model)
+    else:
+        exit("Method")
 
-#    for i in range(len(test)):
+    for i in range(len(test)):
         if use_snli:            
             prem, hypo, label = test[i]            
             x = ([prem], [hypo])                        
@@ -262,66 +262,63 @@ def main():
         #         normalized_scores[idx] = (s / total_score) / 2
 
         normalized_scores = [0.5 + n for n in normalized_scores]  # center scores
-        visual = colorize(words, normalized_scores, colors=colors)
-        with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
-            f.write('<tr>')
-            f.write('<td>')
-            if args.interp_method == 'dknn':
-                f.write('DkNN Leave-One-Out')
-            elif args.interp_method == 'softmax':
-                f.write('Softmax Leave-One-Out')
-            else:
-                f.write('Vanilla Gradient')
-            f.write('</td>')
 
-            f.write('<td>')
-            if label == 1:
-                f.write('Label: Positive')
-            else:
-                f.write('Label: Negative')
-            f.write('</td>')
 
-            f.write('<td>')
-            if prediction == 1:
-                f.write("Prediction: Positive ({0:.2f})         ".format(original_score))
-            else:
-                f.write("Prediction: Negative ({0:.2f})         ".format(original_score))
-            f.write('</td>')
-
-            # if use_snli:
-            #     f.write(' '.join(reverse_vocab[w] for w in prem) + '<br>')
-
-            f.write('<td>') 
-            f.write(visual)
-            f.write('</td>')
-
-        # plot snli results
-        # normalized_scores = []
-        # words = []
-        # for idx, score in scores[:]:
-        #     normalized_scores.append(score - original_score)
-        #     words.append(reverse_vocab[x[idx]])
-        # normalized_scores = [0.5 + n for n in normalized_scores]
-        # visual = colorize(words, normalized_scores, colors = colors)
+        # visual = colorize(words, normalized_scores, colors=colors)
         # with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
-        #     if label == 2:
-        #         f.write('Ground Truth Label: Entailment')
-        #     elif label == 1:
-        #         f.write('Ground Truth Label: Neutral')
-        #     elif label == 0:
-        #         f.write('Ground Truth Label: Contradiction')
+        #     f.write('<tr>')
+        #     f.write('<td>')
+        #     if args.interp_method == 'dknn':
+        #         f.write('DkNN Leave-One-Out')
+        #     elif args.interp_method == 'softmax':
+        #         f.write('Softmax Leave-One-Out')
         #     else:
-        #         exit("Label not found")
+        #         f.write('Vanilla Gradient')
+        #     f.write('</td>')
 
-        #     if prediction == 2:
-        #         f.write("Prediction: Entailment ({})         ".format(original_score))
-        #     elif prediction == 1:
-        #         f.write("Prediction: Neutral ({})         ".format(original_score))
-        #     elif prediction == 0:
-        #         f.write("Prediction: Contradiction ({})         ".format(original_score))
+        #     f.write('<td>')
+        #     if label == 1:
+        #         f.write('Label: Positive')
         #     else:
-        #         eixt("Prediction Label not found")
-        #     f.write(visual + "<br>")
+        #         f.write('Label: Negative')
+        #     f.write('</td>')
+
+        #     f.write('<td>')
+        #     if prediction == 1:
+        #         f.write("Prediction: Positive ({0:.2f})         ".format(original_score))
+        #     else:
+        #         f.write("Prediction: Negative ({0:.2f})         ".format(original_score))
+        #     f.write('</td>')
+
+        #     f.write('<td>') 
+        #     f.write(visual)
+        #     f.write('</td>')
+    
+        #     f.write('</tr>')
+
+        # plot snli results   
+        visual = colorize(words, normalized_scores, colors = colors)
+        with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
+            if label == 0:
+                f.write('Ground Truth Label: Entailment')
+            elif label == 1:
+                f.write('Ground Truth Label: Neutral')
+            elif label == 2:
+                f.write('Ground Truth Label: Contradiction')
+            else:
+                exit("Label not found")
+
+            if prediction == 0:
+                f.write("Prediction: Entailment ({})         ".format(original_score))
+            elif prediction == 1:
+                f.write("Prediction: Neutral ({})         ".format(original_score))
+            elif prediction == 2:
+                f.write("Prediction: Contradiction ({})         ".format(original_score))
+            else:
+                eixt("Prediction Label not found")                     
+            f.write("<br>")
+            f.write(' '.join(reverse_vocab[w] for w in prem) + '<br>')
+            f.write(visual + "<br>")
 
         # display scores normalized across words
         # normalized_scores = []
@@ -346,18 +343,17 @@ def main():
         #     f.write(visual + "<br>")
 
             # print neighbors
-        #    neighbors = dknn.get_neighbors([x])
-        #    print('neighbors:')
-        #    f.write('&nbsp;&nbsp;&nbsp;&nbsp;Nearest Neighbor Sentences: <br>')
-        #    for neighbor in neighbors[:5]:
-        #        curr_nearest_neighbor_input_sentence = '     '
-        #        for word in train[neighbor][0]:
-        #            curr_nearest_neighbor_input_sentence += reverse_vocab[word] + ' '
-        #        print(curr_nearest_neighbor_input_sentence)
-        #        f.write('&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' + curr_nearest_neighbor_input_sentence + '<br>')
-        #    f.write('<br>')
+            neighbors = dknn.get_neighbors(x)
+            print('neighbors:')
+            f.write('&nbsp;&nbsp;&nbsp;&nbsp;Nearest Neighbor Sentences: <br>')
+            for neighbor in neighbors[:5]:
+               curr_nearest_neighbor_input_sentence = '     '
+               for word in train[neighbor][0]:
+                   curr_nearest_neighbor_input_sentence += reverse_vocab[word] + ' '
+               print(curr_nearest_neighbor_input_sentence)
+               f.write('&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' + curr_nearest_neighbor_input_sentence + '<br>')
+            f.write('<br>')
 
-            f.write('</tr>')
             print()
             print()
 

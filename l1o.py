@@ -157,6 +157,9 @@ def main():
     dknn.calibrate(train[:1000], batch_size=setup['batchsize'],
                    converter=converter, device=args.gpu)
 
+    with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
+        f.write('<table style="width:100%"> <tr> <th>Method</th> <th>Label</th> <th>Prediction</th> <th>Text</th> </tr>')
+
     for j in range(len(test) * 3):
         i = j // 3
         if args.interp_method == 'dknn':
@@ -261,26 +264,36 @@ def main():
         normalized_scores = [0.5 + n for n in normalized_scores]  # center scores
         visual = colorize(words, normalized_scores, colors=colors)
         with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
+            f.write('<tr>')
+            f.write('<td>')
             if args.interp_method == 'dknn':
-                f.write('DkNN Leave-One-Out&nbsp;')
+                f.write('DkNN Leave-One-Out')
             elif args.interp_method == 'softmax':
-                f.write('Softmax Leave-One-Out&nbsp;')
+                f.write('Softmax Leave-One-Out')
             else:
-                f.write('Vanilla Gradient&nbsp;')
+                f.write('Vanilla Gradient')
+            f.write('</td>')
 
+            f.write('<td>')
             if label == 1:
-                f.write('Label: Positive&nbsp;')
+                f.write('Label: Positive')
             else:
-                f.write('Label: Negative&nbsp;')
+                f.write('Label: Negative')
+            f.write('</td>')
+
+            f.write('<td>')
             if prediction == 1:
                 f.write("Prediction: Positive ({0:.2f})         ".format(original_score))
             else:
                 f.write("Prediction: Negative ({0:.2f})         ".format(original_score))
-            
-            if use_snli:
-                f.write(' '.join(reverse_vocab[w] for w in prem) + '<br>')
+            f.write('</td>')
 
-            f.write(visual + "<br>")
+            # if use_snli:
+            #     f.write(' '.join(reverse_vocab[w] for w in prem) + '<br>')
+
+            f.write('<td>') 
+            f.write(visual)
+            f.write('</td>')
 
         # plot snli results
         # normalized_scores = []
@@ -344,9 +357,13 @@ def main():
         #        f.write('&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' + curr_nearest_neighbor_input_sentence + '<br>')
         #    f.write('<br>')
 
+            f.write('<tr>')
             print()
             print()
 
+
+    with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
+        f.write('</table>')
 
 if __name__ == '__main__':
     main()

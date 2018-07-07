@@ -294,7 +294,7 @@ def main():
         #     f.write(visual)
         #     f.write('</td>')
     
-        #     f.write('<tr>')
+        #     f.write('</tr>')
 
         # plot snli results   
         visual = colorize(words, normalized_scores, colors = colors)

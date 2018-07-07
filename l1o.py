@@ -154,7 +154,7 @@ def main():
                converter=converter, device=args.gpu)
 
     # need to select calibration data more carefully
-    dknn.calibrate(train[:2], batch_size=setup['batchsize'],
+    dknn.calibrate(train[:1000], batch_size=setup['batchsize'],
                    converter=converter, device=args.gpu)
 
     with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
@@ -235,6 +235,7 @@ def main():
                 else:
                     normalized_scores.append(score)  # for grad its not a drop
                 words.append(reverse_vocab[hypo[idx]])    
+            normalized_scores = [-1 * n for n in normalized_scores]
 
 
         # normalizing for vanilla grad

@@ -34,8 +34,6 @@ class DkNN:
         print('caching hiddens')
         n_batches = len(train) // batch_size
         for i, train_batch in enumerate(tqdm(train_iter, total=n_batches)):
-            if i > 1000:
-                continue
             data = converter(train_batch, device=device, with_label=True)
             text = data['xs']
             labels = data['ys']
@@ -249,7 +247,7 @@ def main():
                converter=converter, device=args.gpu)
 
     # need to select calibration data more carefully
-    dknn.calibrate(train[:2], batch_size=setup['batchsize'],
+    dknn.calibrate(train[:1000], batch_size=setup['batchsize'],
                    converter=converter, device=args.gpu)
 
     # activation_tree = KDTree(act_list)

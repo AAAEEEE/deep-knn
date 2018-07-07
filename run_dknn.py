@@ -34,6 +34,8 @@ class DkNN:
         print('caching hiddens')
         n_batches = len(train) // batch_size
         for i, train_batch in enumerate(tqdm(train_iter, total=n_batches)):
+            if i > 1000:
+                continue
             data = converter(train_batch, device=device, with_label=True)
             text = data['xs']
             labels = data['ys']
@@ -197,7 +199,6 @@ class DkNN:
         batch_size = len(xs)                
         if snli:
             batch_size = len(xs[0])
-        
         reg_logits, knn_logits = self(xs)
 
         reg_pred = F.argmax(reg_logits, 1).data.tolist()
@@ -237,8 +238,10 @@ def main():
     model, train, test, vocab, setup = setup_model(args)
     if setup['dataset'] == 'snli' and not setup['combine_snli']:
         converter = convert_snli_seq
+        use_snli = True
     else:
         converter = convert_seq
+        use_snli = False
 
     '''get dknn layers of training data'''
     dknn = DkNN(model, lsh=args.lsh)
@@ -246,7 +249,7 @@ def main():
                converter=converter, device=args.gpu)
 
     # need to select calibration data more carefully
-    dknn.calibrate(train[:1000], batch_size=setup['batchsize'],
+    dknn.calibrate(train[:2], batch_size=setup['batchsize'],
                    converter=converter, device=args.gpu)
 
     # activation_tree = KDTree(act_list)
@@ -265,7 +268,7 @@ def main():
     for test_batch in tqdm(test_iter, total=n_batches):
         data = converter(test_batch, device=args.gpu, with_label=True)
         text = data['xs']
-        knn_pred, knn_cred, knn_conf, reg_pred, reg_conf = dknn.predict(text)
+        knn_pred, knn_cred, knn_conf, reg_pred, reg_conf = dknn.predict(text, snli=use_snli)
         label = [int(x) for x in data['ys']]
         total += len(label)
         n_knn_correct += sum(x == y for x, y in zip(knn_pred, label))

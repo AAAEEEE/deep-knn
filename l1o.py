@@ -209,17 +209,28 @@ def main():
         #     if score < 1.0:
         #         print(score, reverse_vocab[bigrams[idx][0]] + ' ' + reverse_vocab[bigrams[idx][1]])
 
-        # plot sentiment results visualize results in heatmap
         normalized_scores = []
         words = []
-        for idx, score in enumerate(scores):
-            if args.interp_method == 'dknn' or args.interp_method == 'softmax':
-                normalized_scores.append(score - original_score)  # for l10 drop in score
-            else:
-                normalized_scores.append(score)  # for grad its already normalized
-            words.append(reverse_vocab[text[idx]])
-        if prediction == 1:  # flip sign if positive
-            normalized_scores = [-1 * n for n in normalized_scores]
+        # plot sentiment results visualize results in heatmap        
+        if not use_snli:            
+            for idx, score in enumerate(scores):
+                if args.interp_method == 'dknn' or args.interp_method == 'softmax':
+                    normalized_scores.append(score - original_score)  # for l10 drop in score
+                else:
+                    normalized_scores.append(score)  # for grad its not a drop
+                words.append(reverse_vocab[text[idx]])
+            if prediction == 1:  # flip sign if positive
+                normalized_scores = [-1 * n for n in normalized_scores]
+
+        # plot snli results visualize results in heatmap
+        if use_snli:            
+            for idx, score in enumerate(scores):
+                if args.interp_method == 'dknn' or args.interp_method == 'softmax':
+                    normalized_scores.append(score - original_score)  # for l10 drop in score
+                else:
+                    normalized_scores.append(score)  # for grad its not a drop
+                words.append(reverse_vocab[hypo[idx]])    
+
 
         # normalizing for vanilla grad
         # normalize positive and negatives seperately
@@ -263,6 +274,10 @@ def main():
             #     f.write("Prediction: Positive ({0:.2f})         ".format(original_score))
             # else:
             #     f.write("Prediction: Negative ({0:.2f})         ".format(original_score))
+            
+            if use_snli:
+                f.write(' '.join(reverse_vocab[w] for w in prem) + '<br>')
+
             f.write(visual + "<br>")
 
         # plot snli results

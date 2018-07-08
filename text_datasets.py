@@ -173,12 +173,8 @@ def get_other_text_dataset(name, vocab=None, shrink=1,
 
     return train, test, vocab
 
-
 def download_snli():
     print('download snli')
-    # path = os.path.join(DATA_DIR, 'snli.zip')
-    # if not os.path.exists(path):
-    #     urllib.request.urlretrieve(URL_SNLI, path)
     path = chainer.dataset.cached_download(URL_SNLI)
     with zipfile.ZipFile(path, 'r') as zf:
         zf.extractall()
@@ -229,8 +225,3 @@ def get_snli(vocab=None, shrink=1, char_based=False, combine=False):
     test = transform_snli_to_array(test, vocab, combine=combine)
 
     return train, test, vocab
-
-
-if __name__ == '__main__':
-    train, test, vocab = get_snli()
-    print(len(train))

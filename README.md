@@ -1,84 +1,75 @@
-# Chainer implementation of OpenAI's Finetuned Transformer Language Model
+# InferSent
 
-This is a **Chainer** implementation of the [TensorFlow code](https://github.com/openai/finetune-transformer-lm) provided with OpenAI's paper ["Improving Language Understanding by Generative Pre-Training"](https://blog.openai.com/language-unsupervised/) by Alec Radford, Karthik Narasimhan, Tim Salimans and Ilya Sutskever.
-**Experiment code for ROCStories and SST (Stanford Sentiment Treebank) is contained.**
+This repository contains the official code for the TODO VENUE paper. It contains code to run Deep k-Nearest Neighbors for a variety of models and architectures.
 
-This implementation comprises **a script to load in the Chainer model the weights pre-trained by the authors** with the TensorFlow implementation.
-This is made from [pytorch implementation](https://github.com/huggingface/pytorch-openai-transformer-lm) by line-level replacements as possible.
-If you are interested, see [the diff](https://github.com/soskek/chainer-openai-transformer-lm/commit/b2b971e460e66d8318c2ff0c1b48621856509673).
-This does not always contain implementations which are conventionally natural for chainer, but you can enjoy alignments with pytorch (and tensorflow).
+It also contains code for common interpretation techniques in natural language processing, such as leave one out and gradient based saliency maps. We additionally include code to produce visualizations like the ones seen on our paper's [supplementary website](https://sites.google.com/view/language-dknn/).
 
-This implementation achieved better or same accuracies as ones the paper reported.
-- On the ROCStories test set: median is *86.72* vs 85.8, and best is *87.49* vs 86.5 in 10 runs.
-- On the SST test set: best is *91.87* vs 91.3 in 10 runs.
+## Dependencies
 
-![Transformer Language Model](assets/ftlm.png)
+This code is written in python. Dependencies include:
 
-The model classes and loading script are located in [model_py.py](model_py.py).
+* Python 2/3
+* [Chainer](https://chainer.org/)
+* tqdm
+* numpy
 
-The names of the modules in the Chainer model follow the names of the Variable in the TensorFlow implementation. This implementation tries to follow the original code as closely as possible to minimize the discrepancies.
+If you want to do efficient nearest neighbor lookup:
+* Scikit-Learn (for KDTree)
+* nearpy (for locally sensitive hashing)
 
-This implementation thus also comprises a modified Adam optimization algorithm as used in OpenAI's paper with:
-- fixed weights decay following the work of [Loshchilov et al.](https://arxiv.org/abs/1711.05101), and
-- scheduled learning rate as [commonly used for Transformers](http://nlp.seas.harvard.edu/2018/04/03/attention.html#optimizer).
+If you want to visualize saliency maps:
+* matplotlib
 
-## Requirements
-To use the model it-self by importing [model_py.py](model_py.py), you just need:
-- Chainer
-- [cupy](https://github.com/cupy/cupy) (for gpu run)
 
-To run the classifier training script in [train.py](train.py) you will need in addition:
-- tqdm
-- sklearn
-- spacy
-- ftfy
-- pandas
 
-You can download the weights of the OpenAI pre-trained version by cloning [Alec Radford's repo](https://github.com/openai/finetune-transformer-lm) and placing the `model` folder containing the pre-trained weights in the present repo.
-```bash
-sh download_model_params.sh
+TODO:
+remove combine snli
+
+# TODO
+    # 75 neighbors at each layer, or 75 neighbors total?
+    # before or after relu?
+    # Consider using a different distance than euclidean, cosine?
+
+
+
+This code is built off chainers text classification demo.
+
+
+
+## Word Vectors
+
+In our paper, we used GloVe word vectors, though any pretrained vectors should work fine (word2vec, fastText, etc.). To obtain GloVe vectors, run the following commands.
+
+```wget http://nlp.stanford.edu/data/glove.840B.300d.zip
+unzip glove.840B.300d.zip
+rm glove.840B.300d.zip
 ```
 
+Then pass the pretrained vectors in when training by using the command line argument ```python train_text_classifier.py --word_vectors glove.840B.300d.txt``` 
 
-## Using the pre-trained model as a Transformer Language Model
-The model can be used as a transformer language model with OpenAI's pre-trained weights as follow:
-```python
-from model_py import Model, load_openai_pretrained_model, DEFAULT_CONFIG
 
-args = DEFAULT_CONFIG
-model = Model(args)
-load_openai_pretrained_model(model)
+## References
+
+Please consider citing [1](#dknn-language) if you found this code or our work beneficial to your research.
+
+### TODO title
+
+[1] Eric Wallace\* and Shi Feng\* and Jordan Boyd-Graber, [*TODO title*](PAPER LINK HERE)
+
+```
+@article{TODO,
+  title={TODO},
+  author={TODO},
+  journal={TODO},  
+  year={2018},  
+}
 ```
 
-This model generates Transformer's hidden states. You can use the `LMHead` class in [model.py](model.py) to add a decoder tied with the weights of the encoder and get a full language model. You can also use the `ClfHead` class in [model.py](model.py) to add a classifier on top of the transformer and get a classifier as described in OpenAI's publication. (see an example of both in the `__main__` function of [train.py](train.py))
-
-To use the positional encoder of the transformer, you should encode your dataset using the `encode_dataset()` function of [utils.py](utils.py). Please refer to the beginning of the `__main__` function in [train.py](train.py) to see how to properly define the vocabulary and encode your dataset.
-
-## Fine-tuning the pre-trained model on a classification task
-This model can also be integrated in a classifier as detailed in [OpenAI's paper](https://blog.openai.com/language-unsupervised/). An example of fine-tuning on the Stanford Sentiment Treebank dataset and the ROCStories Cloze task is included with the training code in [train.py](train.py)
+(\* These authors contributed equally.)
 
 
-### Sentiment Analysis
+## Contact
 
-I newly added implementation for experimenting on the Stanford Sentiment Treebank. This implementation is original for this Chainer version. Downloading the datasets is automatically done in the script.
+For issues with code or suggested improvements, feel free to open a pull request.
 
-```bash
-python train.py --dataset sst --desc sst --submit --analysis --data_dir [path to data here] --n_batch 32
-```
-
-Test accuracies from 10 runs were [90.88, 90.99, 90.99, 90.99, 91.05, 91.1, 91.16, 91.38, 91.49, 91.87]. The median is 91.07, and the best score is 91.87, which is also better than the score in the paper (91.3).
-
-
-### ROCStories
-
-The ROCStories dataset can be downloaded from the associated [website](http://cs.rochester.edu/nlp/rocstories/).
-
-As with the [TensorFlow code](https://github.com/openai/finetune-transformer-lm), this code implements the ROCStories Cloze Test result reported in the paper which can be reproduced by running:
-
-```bash
-python train.py --dataset rocstories --desc rocstories --submit --analysis --data_dir [path to data here] --n_batch 16
-```
-
-Test accuracies from 10 runs were [84.87, 85.68, 86.32, 86.48, 86.58, 86.85, 86.91, 87.01, 87.33, 87.49]. The median is 86.72, which is better than the score [original tensorflow code](https://github.com/openai/finetune-transformer-lm) reported (85.8). The best score is 87.49, which is also better than the score in the paper (86.5). A smaller minibatch size (16) is used due to a memory issue.
-
-For throughput during training, this chainer version were 3 times faster than the pytorch version.
+To contact the authors, reach out to Eric Wallace (ewallac2@umd.edu) and Shi Feng (shifeng@cs.umd.edu).

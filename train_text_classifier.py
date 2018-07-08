@@ -13,6 +13,8 @@ import nets
 from nlp_utils import convert_seq, convert_snli_seq
 import text_datasets
 
+''' trains a classification model and saves it. Can then be used for
+regular inference or for dknn'''
 
 def create_parser():
     parser = argparse.ArgumentParser(
@@ -32,7 +34,7 @@ def create_parser():
     parser.add_argument('--dropout', '-d', type=float, default=0.4,
                         help='Dropout rate')
     parser.add_argument('--combine_snli', action='store_true')
-    parser.add_argument('--dataset', '-data', default='TREC',
+    parser.add_argument('--dataset', '-data', default='stsa.binary',
                         choices=['dbpedia', 'imdb.binary', 'imdb.fine',
                                  'TREC', 'stsa.binary', 'stsa.fine',
                                  'custrev', 'mpqa', 'rt-polarity', 'subj',

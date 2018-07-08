@@ -7,6 +7,10 @@ from chainer import reporter
 
 embed_init = chainer.initializers.Uniform(.25)
 
+'''This file contains the model architectures used. Also
+contains code for getting the gradient of the output w.r.t to the 
+words to perform vanilla gradient interpretation. The gradient is also
+used to generate reduced examples as in (Feng et al. 2018)'''
 
 def sequence_embed(embed, xs, dropout=0.):
     """Efficient embedding function for variable-length sequences
@@ -100,6 +104,7 @@ class TextClassifier(chainer.Chain):
         reporter.report({'accuracy': accuracy.data}, self)
         return loss
 
+    # returns gradient w.r.t to each word
     def get_onehot_grad(self, xs, ys=None):
         if ys is None:
             with chainer.using_config('train', False):
@@ -127,6 +132,8 @@ class TextClassifier(chainer.Chain):
             onehot_grad = [x[:l] for x, l in zip(onehot_grad, lengths)]
         return onehot_grad
 
+    # if using dknn, return prediction and activations for each layer
+    # o/w, just return prediction
     def predict(self, xs, softmax=False, argmax=False, dknn=False):
         if dknn:
             encodings, dknn_layers = self.encoder(xs, dknn=True)
@@ -145,20 +152,10 @@ class TextClassifier(chainer.Chain):
 
 
 class SNLIClassifier(chainer.Chain):
-
-    """A classifier using a given encoder.
-
-     This chain encodes a sentence and classifies it into classes.
-
-     Args:
-         encoder (Link): A callable encoder, which extracts a feature.
-             Input is a list of variables whose shapes are
-             "(sentence_length, )".
-             Output is a variable whose shape is "(batchsize, n_units)".
-         n_class (int): The number of classes to be predicted.
-
-     """
-
+    ''' Uses a BiLSTM to read the premise and hypothesis, and then
+    combines the results of the two last states and puts them through
+    FC layers. The concatenation of the final hidden states is inspired
+    from infersent '''
     def __init__(self, encoder, n_class=3, n_layers=3, dropout=0.1,
                  combine=False):
         super(SNLIClassifier, self).__init__()
@@ -228,10 +225,9 @@ class SNLIClassifier(chainer.Chain):
         else:
             u = self.encoder(xs[0], dknn=False)
             v = self.encoder(xs[1], dknn=False)            
+            # concatenate results as done in infersent
             encodings = F.concat((u, v, F.absolute(u-v), u*v), axis=1)
-            dknn_layers = [encodings]
-        # encodings = F.dropout(encodings, ratio=self.dropout)
-        # don't think we need because mlp uses dropout at beginning
+            dknn_layers = [encodings]        
 
         if dknn:
             outputs, _dknn_layers = self.mlp(encodings, dknn=True)
@@ -250,7 +246,6 @@ class SNLIClassifier(chainer.Chain):
             return outputs
 
 class RNNEncoder(chainer.Chain):
-
     """A LSTM-RNN Encoder with Word Embedding.
 
     This model encodes a sentence sequentially using LSTM.
@@ -262,7 +257,6 @@ class RNNEncoder(chainer.Chain):
         dropout (float): The dropout ratio.
 
     """
-
     def __init__(self, n_layers, n_vocab, n_units, dropout=0.1):
         super(RNNEncoder, self).__init__()
         with self.init_scope():
@@ -291,7 +285,6 @@ class RNNEncoder(chainer.Chain):
             return last_h[-1], last_h
         return last_h[-1]
 
-
 class BiLSTMEncoder(chainer.Chain):
 
     """A LSTM-RNN Encoder with Word Embedding.
@@ -305,7 +298,6 @@ class BiLSTMEncoder(chainer.Chain):
         dropout (float): The dropout ratio.
 
     """
-
     def __init__(self, n_layers, n_vocab, n_units, dropout=0.1):
         super(BiLSTMEncoder, self).__init__()
         with self.init_scope():
@@ -345,7 +337,6 @@ class BiLSTMEncoder(chainer.Chain):
 
 
 class CNNEncoder(chainer.Chain):
-
     """A CNN encoder with word embedding.
 
     This model encodes a sentence as a set of n-gram chunks
@@ -360,7 +351,6 @@ class CNNEncoder(chainer.Chain):
         dropout (float): The dropout ratio.
 
     """
-
     def __init__(self, n_layers, n_vocab, n_units, dropout=0.1):
         out_units = n_units // 3
         super(CNNEncoder, self).__init__()
@@ -411,7 +401,6 @@ class CNNEncoder(chainer.Chain):
 
 
 class MLP(chainer.ChainList):
-
     """A multilayer perceptron.
 
     Args:
@@ -442,7 +431,6 @@ class MLP(chainer.ChainList):
 
 
 class BOWEncoder(chainer.Chain):
-
     """A BoW encoder with word embedding.
 
     This model encodes a sentence as just a set of words by averaging.
@@ -453,7 +441,6 @@ class BOWEncoder(chainer.Chain):
         dropout (float): The dropout ratio.
 
     """
-
     def __init__(self, n_vocab, n_units, dropout=0.1):
         super(BOWEncoder, self).__init__()
         with self.init_scope():
@@ -483,7 +470,6 @@ class BOWEncoder(chainer.Chain):
 
 
 class BOWMLPEncoder(chainer.Chain):
-
     """A BOW encoder with word embedding and MLP.
 
     This model encodes a sentence as just a set of words by averaging.
@@ -496,7 +482,6 @@ class BOWMLPEncoder(chainer.Chain):
         dropout (float): The dropout ratio.
 
     """
-
     def __init__(self, n_layers, n_vocab, n_units, dropout=0.1):
         super(BOWMLPEncoder, self).__init__()
         with self.init_scope():

@@ -6,7 +6,7 @@ import chainer
 import nets
 import text_datasets
 
-
+# Loads a model, dataset, vocabulary, and other settings from a stored result
 def setup_model(args):
     sys.stderr.write(json.dumps(args.__dict__, indent=2) + '\n')
     setup = json.load(open(args.model_setup))

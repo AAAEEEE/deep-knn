@@ -13,7 +13,8 @@ from sklearn.neighbors import KDTree
 from nlp_utils import convert_seq, convert_snli_seq
 from utils import setup_model
 
-
+'''contains all of the code to run Deep K Nearest Neighbors 
+for any model'''
 class DkNN:
 
     def __init__(self, model, lsh=False):
@@ -24,6 +25,8 @@ class DkNN:
         self._A = None
         self.lsh = lsh
 
+    '''builds the nearest neighbor lookup data structures for all of the training
+    data'''
     def build(self, train, batch_size=64, converter=convert_seq, device=0):
         train_iter = chainer.iterators.SerialIterator(
                 train, batch_size, repeat=False)
@@ -71,6 +74,7 @@ class DkNN:
 
             self.tree_list.append(tree)
 
+    '''calibrates the model using a small heldout set'''
     def calibrate(self, data, batch_size=64, converter=convert_seq, device=0):
         data_iter = chainer.iterators.SerialIterator(
                 data, batch_size, repeat=False)
@@ -88,16 +92,20 @@ class DkNN:
                 preds = dict(Counter(knn_logits[j]).most_common())
                 cnt_y = preds[labels[j]]
                 self._A.append(cnt_y / cnt_all)
-
-    def get_neighbor_change(self, xs, x):
+    
+    '''returns what percent of the nearest neighbors are the 
+    same after changing the input from x to new_x'''
+    def get_neighbor_change(self, new_x, x):
         full_length_neighbors = self.get_neighbors(x)        
-        l10_neighbors = self.get_neighbors(xs)        
+        l10_neighbors = self.get_neighbors(new_x)        
         overlap = 0.0
         for i in l10_neighbors:
             if i in full_length_neighbors:
                 overlap = overlap + 1
         return overlap / len(l10_neighbors)
 
+    ''' returns the indices of the nearest neighbors according
+    to their position in the training data'''
     def get_neighbors(self, xs):
         assert self.tree_list is not None
         assert self.label_list is not None
@@ -126,7 +134,8 @@ class DkNN:
                     _, knn = self.tree_list[layer_id].query([hidden], k=75)
                     neighbors = knn[0]             # This is the setting where you only take the last layer
         return neighbors
-
+    
+    '''forward pass of model for standard inference and dknn'''
     def __call__(self, xs):
         assert self.tree_list is not None
         assert self.label_list is not None
@@ -162,6 +171,7 @@ class DkNN:
             knn_logits .append(neighbor_labels)
         return reg_logits, knn_logits
 
+    ''' returns credibility for a certain class ys'''
     def get_credibility(self, xs, ys, calibrated=False, use_snli=False):
         assert self.tree_list is not None
         assert self.label_list is not None
@@ -184,12 +194,14 @@ class DkNN:
             knn_cred.append(p_1)
         return knn_cred
 
+    '''returns confidence for standard prediction'''
     def get_regular_confidence(self, xs, snli=False):
-        reg_logits, knn_logits = self(xs)
-        # reg_pred = F.argmax(reg_logits, 1).data.tolist()
+        reg_logits, knn_logits = self(xs)        
         reg_conf = F.max(reg_logits, 1).data.tolist()
         return reg_conf
 
+    '''predicts using normal inference and dknn. Retrieves the nearest neighbor
+    hidden states, and returns the class with the highest number of nearest neighbors'''
     def predict(self, xs, calibrated=False, snli=False):
         assert self.tree_list is not None
         assert self.label_list is not None
@@ -246,11 +258,10 @@ def main():
                converter=converter, device=args.gpu)
 
     # need to select calibration data more carefully
+    '''calibrate the dknn credibility values'''
     dknn.calibrate(train[:1000], batch_size=setup['batchsize'],
                    converter=converter, device=args.gpu)
-
-    # activation_tree = KDTree(act_list)
-
+  
     '''run dknn on evaluation data'''
     test_iter = chainer.iterators.SerialIterator(
             test, setup['batchsize'], repeat=False)
@@ -273,12 +284,6 @@ def main():
 
     print('knn accuracy', n_knn_correct / total)
     print('reg accuracy', n_reg_correct / total)
-
-    # TODO
-    # 75 neighbors at each layer, or 75 neighbors total?
-    # before or after relu?
-    # Consider using a different distance than euclidean, cosine?
-
 
 if __name__ == '__main__':
     main()

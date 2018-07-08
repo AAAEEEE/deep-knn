@@ -1,4 +1,4 @@
-# InferSent
+# Deep k-Nearest Neighbors and Interpretable NLP
 
 This repository contains the official code for the TODO VENUE paper. It contains code to run Deep k-Nearest Neighbors for a variety of models and architectures.
 

@@ -40,7 +40,8 @@ This code is built off chainers text classification demo.
 
 In our paper, we used GloVe word vectors, though any pretrained vectors should work fine (word2vec, fastText, etc.). To obtain GloVe vectors, run the following commands.
 
-```wget http://nlp.stanford.edu/data/glove.840B.300d.zip
+```
+wget http://nlp.stanford.edu/data/glove.840B.300d.zip
 unzip glove.840B.300d.zip
 rm glove.840B.300d.zip
 ```

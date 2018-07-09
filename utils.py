@@ -30,7 +30,7 @@ def setup_model(args):
         train, test, vocab = text_datasets.get_other_text_dataset(
             dataset, char_based=setup['char_based'])
 
-    # vocab = json.load(open(setup['vocab_path']))
+    vocab = json.load(open(setup['vocab_path']))
     n_class = setup['n_class']
     print('# train data: {}'.format(len(train)))
     print('# test  data: {}'.format(len(test)))

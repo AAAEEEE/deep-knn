@@ -1,6 +1,8 @@
 #!/usr/bin/env python
+import os
+import pickle
 import argparse
-from tqdm import tqdm, tqdm_notebook
+from tqdm import tqdm
 from collections import Counter
 
 import chainer
@@ -13,8 +15,10 @@ from sklearn.neighbors import KDTree
 from nlp_utils import convert_seq, convert_snli_seq
 from utils import setup_model
 
-'''contains all of the code to run Deep K Nearest Neighbors 
+'''contains all of the code to run Deep K Nearest Neighbors
 for any model'''
+
+
 class DkNN:
 
     def __init__(self, model, lsh=False):
@@ -92,12 +96,12 @@ class DkNN:
                 preds = dict(Counter(knn_logits[j]).most_common())
                 cnt_y = preds[labels[j]]
                 self._A.append(cnt_y / cnt_all)
-    
-    '''returns what percent of the nearest neighbors are the 
+
+    '''returns what percent of the nearest neighbors are the
     same after changing the input from x to new_x'''
     def get_neighbor_change(self, new_x, x):
-        full_length_neighbors = self.get_neighbors(x)        
-        l10_neighbors = self.get_neighbors(new_x)        
+        full_length_neighbors = self.get_neighbors(x)
+        l10_neighbors = self.get_neighbors(new_x)
         overlap = 0.0
         for i in l10_neighbors:
             if i in full_length_neighbors:
@@ -132,9 +136,9 @@ class DkNN:
                         neighbors.append(nn[1])
                 else:  # use kdtree
                     _, knn = self.tree_list[layer_id].query([hidden], k=75)
-                    neighbors = knn[0]             # This is the setting where you only take the last layer
+                    neighbors = knn[0]  # FIXME This is the setting where you only take the last layer
         return neighbors
-    
+
     '''forward pass of model for standard inference and dknn'''
     def __call__(self, xs):
         assert self.tree_list is not None
@@ -178,7 +182,7 @@ class DkNN:
 
         batch_size = len(xs)
         if use_snli:
-            batch_size = len(xs[0])        
+            batch_size = len(xs[0])
 
         _, knn_logits = self(xs)
 
@@ -196,17 +200,19 @@ class DkNN:
 
     '''returns confidence for standard prediction'''
     def get_regular_confidence(self, xs, snli=False):
-        reg_logits, knn_logits = self(xs)        
+        reg_logits, knn_logits = self(xs)
         reg_conf = F.max(reg_logits, 1).data.tolist()
         return reg_conf
 
     '''predicts using normal inference and dknn. Retrieves the nearest neighbor
-    hidden states, and returns the class with the highest number of nearest neighbors'''
+    hidden states, and returns the class with the highest number of nearest
+    neighbors
+    '''
     def predict(self, xs, calibrated=False, snli=False):
         assert self.tree_list is not None
         assert self.label_list is not None
 
-        batch_size = len(xs)                
+        batch_size = len(xs)
         if snli:
             batch_size = len(xs[0])
         reg_logits, knn_logits = self(xs)
@@ -253,6 +259,12 @@ def main():
         converter = convert_seq
         use_snli = False
 
+    with open(os.path.join(setup['save_path'], 'calib.pkl'), 'rb') as f:
+        calibration = pickle.load(f)
+
+    with open(os.path.join(setup['save_path'], 'train.pkl'), 'rb') as f:
+        train = pickle.load(f)
+
     '''get dknn layers of training data'''
     dknn = DkNN(model, lsh=args.lsh)
     dknn.build(train, batch_size=setup['batchsize'],
@@ -260,9 +272,9 @@ def main():
 
     # need to select calibration data more carefully
     '''calibrate the dknn credibility values'''
-    dknn.calibrate(train[:1000], batch_size=setup['batchsize'],
+    dknn.calibrate(calibration, batch_size=setup['batchsize'],
                    converter=converter, device=args.gpu)
-  
+
     '''run dknn on evaluation data'''
     test_iter = chainer.iterators.SerialIterator(
             test, setup['batchsize'], repeat=False)
@@ -285,6 +297,7 @@ def main():
 
     print('knn accuracy', n_knn_correct / total)
     print('reg accuracy', n_reg_correct / total)
+
 
 if __name__ == '__main__':
     main()

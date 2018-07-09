@@ -1,8 +1,10 @@
 #!/usr/bin/env python
+import os
+import json
 import argparse
 import datetime
-import json
-import os
+import pickle
+import random
 import numpy as np
 
 import chainer
@@ -15,6 +17,7 @@ import text_datasets
 
 ''' trains a classification model and saves it. Can then be used for
 regular inference or for dknn'''
+
 
 def create_parser():
     parser = argparse.ArgumentParser(
@@ -70,6 +73,10 @@ def main():
         train, test, vocab = text_datasets.get_other_text_dataset(
             args.dataset, char_based=args.char_based)
 
+    random.shuffle(train)
+    calibration = train[:1000]
+    train = train[1000:]
+
     print('# train data: {}'.format(len(train)))
     print('# test  data: {}'.format(len(test)))
     print('# vocab: {}'.format(len(vocab)))
@@ -94,9 +101,19 @@ def main():
         os.mkdir(args.out)
     if not os.path.isdir(save_path):
         os.mkdir(save_path)
+    args.save_path = save_path
+
     vocab_path = os.path.join(save_path, 'vocab.json')
     model_path = os.path.join(save_path, 'best_model.npz')
     setup_path = os.path.join(save_path, 'args.json')
+    calib_path = os.path.join(save_path, 'calib.pkl')
+    train_path = os.path.join(save_path, 'train.pkl')
+
+    with open(calib_path, 'wb') as f:
+        pickle.dump(calibration, f)
+
+    with open(train_path, 'wb') as f:
+        pickle.dump(train, f)
 
     with open(vocab_path, 'w') as f:
         json.dump(vocab, f)
@@ -147,7 +164,7 @@ def main():
     # Setup an optimizer
     optimizer = chainer.optimizers.Adam()
     optimizer.setup(model)
-    #optimizer.add_hook(chainer.optimizer.WeightDecay(1e-4))
+    # optimizer.add_hook(chainer.optimizer.WeightDecay(1e-4))
 
     # Set up a trainer
     if args.dataset == 'snli' and not args.combine_snli:

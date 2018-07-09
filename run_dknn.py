@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import os
-import pickle
+import json
 import argparse
 from tqdm import tqdm
 from collections import Counter
@@ -94,7 +94,7 @@ class DkNN:
             for j, _ in enumerate(batch):
                 cnt_all = len(knn_logits[j])
                 preds = dict(Counter(knn_logits[j]).most_common())
-                cnt_y = preds[labels[j]]
+                cnt_y = preds.get(labels[j], 0)
                 self._A.append(cnt_y / cnt_all)
 
     '''returns what percent of the nearest neighbors are the
@@ -259,11 +259,11 @@ def main():
         converter = convert_seq
         use_snli = False
 
-    with open(os.path.join(setup['save_path'], 'calib.pkl'), 'rb') as f:
-        calibration = pickle.load(f)
+    with open(os.path.join(setup['save_path'], 'calib.json')) as f:
+        calibration_idx = json.load(f)
 
-    with open(os.path.join(setup['save_path'], 'train.pkl'), 'rb') as f:
-        train = pickle.load(f)
+    calibration = [train[i] for i in calibration_idx]
+    train = [x for i, x in enumerate(train) if i not in calibration_idx]
 
     '''get dknn layers of training data'''
     dknn = DkNN(model, lsh=args.lsh)

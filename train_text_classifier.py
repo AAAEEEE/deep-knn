@@ -73,9 +73,10 @@ def main():
         train, test, vocab = text_datasets.get_other_text_dataset(
             args.dataset, char_based=args.char_based)
 
-    random.shuffle(train)
-    calibration = train[:1000]
-    train = train[1000:]
+    train_idx = list(range(len(train)))
+    calibration_idx = sorted(random.sample(train_idx, 1000))
+    calibration = [train[i] for i in calibration_idx]
+    train = [x for i, x in enumerate(train) if i not in calibration_idx]
 
     print('# train data: {}'.format(len(train)))
     print('# test  data: {}'.format(len(test)))
@@ -106,14 +107,10 @@ def main():
     vocab_path = os.path.join(save_path, 'vocab.json')
     model_path = os.path.join(save_path, 'best_model.npz')
     setup_path = os.path.join(save_path, 'args.json')
-    calib_path = os.path.join(save_path, 'calib.pkl')
-    train_path = os.path.join(save_path, 'train.pkl')
+    calib_path = os.path.join(save_path, 'calib.json')
 
-    with open(calib_path, 'wb') as f:
-        pickle.dump(calibration, f)
-
-    with open(train_path, 'wb') as f:
-        pickle.dump(train, f)
+    with open(calib_path, 'w') as f:
+        json.dump(calibration_idx, f)
 
     with open(vocab_path, 'w') as f:
         json.dump(vocab, f)

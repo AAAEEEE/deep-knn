@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import argparse
 import numpy as np
-#import cupy as cp
+import cupy as cp
 import warnings
 from functools import partial
 import matplotlib
@@ -30,8 +30,8 @@ from run_dknn import DkNN
 
 def snli_flatten(x):
     '''generate version of x with each token removed'''
-    # if cp.get_array_module(x) == cp:
-    #     x = cp.asnumpy(x)
+    if cp.get_array_module(x) == cp:
+        x = cp.asnumpy(x)
     reduced_hypo = []
     prem = []    
     for i in range(len(x[1][0])):
@@ -46,8 +46,8 @@ def flatten(x):
     '''generate version of x with each token removed'''
     assert x.ndim == 1
     assert x.shape[0] > 1
-    # if cp.get_array_module(x) == cp:
-    #     x = cp.asnumpy(x)
+    if cp.get_array_module(x) == cp:
+        x = cp.asnumpy(x)
     xs = []    
     for i in range(x.shape[0]):
         xs.append(np.concatenate((x[:i], x[i+1:]), axis=0))
@@ -66,8 +66,8 @@ def leave_one_out(dknn, x, bigrams=False, snli=False, use_credibility=True):
     else:
         y = reg_pred[0]    
 
-    # gpu = cp.get_array_module(x) == cp
-    # x = cp.asnumpy(x)
+    gpu = cp.get_array_module(x) == cp
+    x = cp.asnumpy(x)
     if snli:
         xs = snli_flatten(x)
         ys = [int(y) for _ in xs[0]]
@@ -77,8 +77,8 @@ def leave_one_out(dknn, x, bigrams=False, snli=False, use_credibility=True):
     else:
         xs = flatten(x)
         ys = [int(y) for _ in xs]
-    # if gpu:
-    #     xs = [cp.asarray(x) for x in xs]
+    if gpu:
+        xs = [cp.asarray(x) for x in xs]
     
     # rank
     if use_credibility:
@@ -154,7 +154,7 @@ def main():
                converter=converter, device=args.gpu)
 
     # need to select calibration data more carefully
-    dknn.calibrate(train[:1000], batch_size=setup['batchsize'],
+    dknn.calibrate(train[:50], batch_size=setup['batchsize'],
                    converter=converter, device=args.gpu)
 
     with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
@@ -320,6 +320,7 @@ def main():
             f.write("<br>")
             f.write(' '.join(reverse_vocab[w] for w in prem) + '<br>')
             f.write(visual + "<br>")
+            f.write("<br>")
 
         # display scores normalized across words
         # normalized_scores = []
@@ -344,16 +345,16 @@ def main():
         #     f.write(visual + "<br>")
 
             # print neighbors
-            # neighbors = dknn.get_neighbors(x)
-            # print('neighbors:')
-            # f.write('&nbsp;&nbsp;&nbsp;&nbsp;Nearest Neighbor Sentences: <br>')
-            # for neighbor in neighbors[:5]:
-            #    curr_nearest_neighbor_input_sentence = '     '
-            #    for word in train[neighbor][0]:
-            #        curr_nearest_neighbor_input_sentence += reverse_vocab[word] + ' '
-            #    print(curr_nearest_neighbor_input_sentence)
-            #    f.write('&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' + curr_nearest_neighbor_input_sentence + '<br>')
-            # f.write('<br>')
+            neighbors = dknn.get_neighbors(x)
+            print('neighbors:')
+            f.write('&nbsp;&nbsp;&nbsp;&nbsp;Nearest Neighbor Sentences: <br>')
+            for neighbor in neighbors[:5]:
+               curr_nearest_neighbor_input_sentence = '     '
+               for word in train[neighbor][0]:
+                   curr_nearest_neighbor_input_sentence += reverse_vocab[word] + ' '
+               print(curr_nearest_neighbor_input_sentence)
+               f.write('&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' + curr_nearest_neighbor_input_sentence + '<br>')
+            f.write('<br>')
 
             print()
             print()

@@ -36,7 +36,7 @@ class DkNN:
         label_list = []
         print('caching hiddens')
         n_batches = len(train) // batch_size
-        for i, train_batch in enumerate(tqdm(train_iter, total=n_batches)):
+        for i, train_batch in enumerate(tqdm(train_iter, total=n_batches)):            
             data = converter(train_batch, device=device, with_label=True)
             text = data['xs']
             labels = data['ys']

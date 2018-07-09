@@ -91,7 +91,7 @@ class DkNN:
             batch = converter(batch, device=device, with_label=True)
             labels = [int(x) for x in batch['ys']]
             _, knn_logits = self(batch['xs'])
-            for j, _ in enumerate(batch):
+            for j, _ in enumerate(batch['xs']):
                 cnt_all = len(knn_logits[j])
                 preds = dict(Counter(knn_logits[j]).most_common())
                 cnt_y = preds.get(labels[j], 0)
@@ -193,9 +193,11 @@ class DkNN:
             cnt_all = len(knn_logits[i])
             cnts = dict(Counter(knn_logits[i]).most_common())
             p_1 = cnts.get(ys[i], 0) / cnt_all
-            if calibrated and self._A is not None:
-                p_1 = len([x for x in self._A if x >= p_1]) / len(self._A)
             knn_cred.append(p_1)
+        if calibrated and self._A is not None:
+            for i, p_1 in enumerate(knn_cred):
+                cnt_less = len([x for x in self._A if x < p_1])
+                knn_cred[i] = cnt_less / len(self._A)
         return knn_cred
 
     '''returns confidence for standard prediction'''

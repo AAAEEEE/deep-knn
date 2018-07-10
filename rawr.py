@@ -72,7 +72,7 @@ def remove_one(model, xs, n_beams, indices, removed_indices, max_beam_size=5,
                 new_xs.append(x)
             new_indices.append(indices[i][:j] + indices[i][j+1:])
             try:
-                new_removed_indices.append(removed_indices[i] + [indices[i][j]])
+                new_removed_indices.append(removed_indices[i]+[indices[i][j]])
             except IndexError:
                 print(i, j, len(indices[i]))
                 return
@@ -105,14 +105,18 @@ def get_rawr(model, xs, max_beam_size=5, snli=False):
         final_length = [x.shape[0] for x in xs]
 
     with chainer.using_config('train', False):
-        ys_0 = model.predict(xs, argmax=True)
+        output = model.predict(xs, softmax=True)
+        ys_0 = F.argmax(output, axis=1).data
+        ps_0 = F.max(output, axis=1).data
 
     while True:
         xs, n_beams, indices, removed_indices = remove_one(
                 model, xs, n_beams, indices, removed_indices, max_beam_size,
                 snli)
         with chainer.using_config('train', False):
-            ys = model.predict(xs, argmax=True)
+            output = model.predict(xs, softmax=True)
+            ys = F.argmax(output, axis=1).data
+            ps = F.max(output, axis=1).data
 
         if snli:
             prem = xs[0]
@@ -129,6 +133,8 @@ def get_rawr(model, xs, max_beam_size=5, snli=False):
             cnt = 0
             for i in range(start, start + n_beams[example_idx]):
                 if not ys[i] == ys_0[example_idx]:
+                    continue
+                if ps[i] < 0.8 * ps_0[example_idx]:
                     continue
 
                 x = xs[i].tolist()
@@ -197,8 +203,8 @@ def main():
     checkpoint = []
     n_batches = len(test) // args.batchsize
     for batch_idx, batch in enumerate(tqdm(test_iter, total=n_batches)):
-        if batch_idx > 10:
-            break
+        # if batch_idx > 10:
+        #     break
 
         batch = converter(batch, device=args.gpu)
         xs = batch['xs']

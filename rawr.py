@@ -134,8 +134,8 @@ def get_rawr(model, xs, max_beam_size=5, snli=False):
             for i in range(start, start + n_beams[example_idx]):
                 if not ys[i] == ys_0[example_idx]:
                     continue
-                if ps[i] < 0.8 * ps_0[example_idx]:
-                    continue
+                # if ps[i] < 0.8 * ps_0[example_idx]:
+                #     continue
 
                 x = xs[i].tolist()
                 if len(x) < final_length[example_idx]:
@@ -203,8 +203,8 @@ def main():
     checkpoint = []
     n_batches = len(test) // args.batchsize
     for batch_idx, batch in enumerate(tqdm(test_iter, total=n_batches)):
-        # if batch_idx > 10:
-        #     break
+        if batch_idx > 10:
+            break
 
         batch = converter(batch, device=args.gpu)
         xs = batch['xs']

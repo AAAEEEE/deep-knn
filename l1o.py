@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 import pickle
 import argparse
+import os
+import json
 import numpy as np
 import cupy as cp
 import warnings
@@ -57,10 +59,10 @@ def flatten(x):
     return xs
 
 
-def leave_one_out(dknn, x, bigrams=False, snli=False, use_credibility=True):
+def leave_one_out(dknn, x, bigrams=False, snli=False, use_credibility=True, use_calibration=False):
     if not snli:
         x = [x]
-    ys, original_score, _, reg_pred, reg_conf = dknn.predict(x, snli=snli)
+    ys, original_score, knn_conf, reg_pred, reg_conf = dknn.predict(x, snli=snli, calibrated=use_calibration)
     if not snli:
         x = x[0]
     
@@ -85,8 +87,8 @@ def leave_one_out(dknn, x, bigrams=False, snli=False, use_credibility=True):
     
     # rank
     if use_credibility:
-        scores = dknn.get_credibility(xs, ys, use_snli=snli) 
-        original_score = original_score[0]
+        scores = dknn.get_credibility(xs, ys, use_snli=snli, calibrated=use_calibration) 
+        original_score = original_score[0]    
         # scores = []
         # for input_x in xs:
         #     scores.append(dknn.get_neighbor_change([input_x], [x]))
@@ -152,12 +154,20 @@ def main():
         converter = convert_seq
         colors = 'RdBu'
 
-    dknn = DkNN(model, args.lsh)
+    with open(os.path.join(setup['save_path'], 'calib.json')) as f:
+        calibration_idx = json.load(f)
+
+    calibration = [train[i] for i in calibration_idx]
+    train = [x for i, x in enumerate(train) if i not in calibration_idx]
+
+    '''get dknn layers of training data'''
+    dknn = DkNN(model, lsh=args.lsh)
     dknn.build(train, batch_size=setup['batchsize'],
                converter=converter, device=args.gpu)
 
     # need to select calibration data more carefully
-    dknn.calibrate(train[:50], batch_size=setup['batchsize'],
+    '''calibrate the dknn credibility values'''
+    dknn.calibrate(calibration, batch_size=setup['batchsize'],
                    converter=converter, device=args.gpu)
 
     with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
@@ -167,14 +177,14 @@ def main():
     word_count = defaultdict(lambda: 0)
     cached_scores = []
 
-    # for j in range(len(test) * 3):
-    #     i = j // 3
-    #     if args.interp_method == 'dknn':
-    #         args.interp_method = 'softmax'
-    #     elif args.interp_method == 'softmax':
-    #         args.interp_method = 'grad'
-    #     elif args.interp_method == 'grad':
-    #         args.interp_method = 'dknn'
+    #for j in range(len(test) * 3):
+        #i = j // 3
+        # if args.interp_method == 'dknn':
+        #     args.interp_method = 'softmax'
+        # elif args.interp_method == 'softmax':
+        #     args.interp_method = 'grad'
+        # elif args.interp_method == 'grad':
+        #     args.interp_method = 'dknn'
     if args.interp_method == 'dknn' or args.interp_method == 'softmax':
         ranker = partial(leave_one_out, dknn)
     elif args.interp_method == 'grad':
@@ -194,7 +204,7 @@ def main():
             use_cred = True
         else:
             use_cred = False
-
+    
         prediction, original_score, scores = ranker(x, snli=use_snli, use_credibility=use_cred)            
         sorted_scores = sorted(list(enumerate(scores)), key=lambda x: x[1])
         print('label: {}'.format(label[0]))

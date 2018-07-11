@@ -25,13 +25,13 @@ with open('visualization_blog.html', 'a') as f:
     f.write('<table style="width:100%"> <tr> <th>Normalization Method</th> <th>Color</th> <th>Text</th> </tr>')
 
 # Methods to try 
-
 # Rescale by standard deviation (see section 4.1.3 of https://arxiv.org/pdf/1801.05453.pdf)
 # Multiply gradient by word embedding
 # Divide by total std dev across all words
+# probably others (i had some more ideas on my phone)
 
 all_normalized_scores = pickle.load(open('cached/grad_cached_scores.pkl','rb'))
-normalization_methods = ['binary_across_words', 'across_words', 'clip_to_one', 'divide_binary_max', 'divide_max']
+normalization_methods = ['binary_across_words', 'across_words', 'divide_by_total_max', 'divide_by_total_binary_max', 'divide_binary_max', 'divide_max']
 colors = ['RdBu', 'seismic', 'bwr','coolwarm'] #'cool','BuPu','plasma','inferno']
 clip_methods = ['clip_to_one','clip_to_99th_percentile','none']
 

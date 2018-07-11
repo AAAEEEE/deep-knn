@@ -2,7 +2,7 @@
 import pickle
 import argparse
 import numpy as np
-import cupy as cp
+#import cupy as cp
 import warnings
 from functools import partial
 import matplotlib
@@ -32,8 +32,8 @@ from run_dknn import DkNN
 
 def snli_flatten(x):
     '''generate version of x with each token removed'''
-    if cp.get_array_module(x) == cp:
-        x = cp.asnumpy(x)
+    #if cp.get_array_module(x) == cp:
+     #   x = cp.asnumpy(x)
     reduced_hypo = []
     prem = []    
     for i in range(len(x[1][0])):
@@ -48,8 +48,8 @@ def flatten(x):
     '''generate version of x with each token removed'''
     assert x.ndim == 1
     assert x.shape[0] > 1
-    if cp.get_array_module(x) == cp:
-        x = cp.asnumpy(x)
+    #if cp.get_array_module(x) == cp:
+        #x = cp.asnumpy(x)
     xs = []    
     for i in range(x.shape[0]):
         xs.append(np.concatenate((x[:i], x[i+1:]), axis=0))
@@ -68,8 +68,8 @@ def leave_one_out(dknn, x, bigrams=False, snli=False, use_credibility=True):
     else:
         y = reg_pred[0]    
 
-    gpu = cp.get_array_module(x) == cp
-    x = cp.asnumpy(x)
+    #gpu = cp.get_array_module(x) == cp
+    #x = cp.asnumpy(x)
     if snli:
         xs = snli_flatten(x)
         ys = [int(y) for _ in xs[0]]
@@ -79,8 +79,8 @@ def leave_one_out(dknn, x, bigrams=False, snli=False, use_credibility=True):
     else:
         xs = flatten(x)
         ys = [int(y) for _ in xs]
-    if gpu:
-        xs = [cp.asarray(x) for x in xs]
+    #if gpu:
+        #xs = [cp.asarray(x) for x in xs]
     
     # rank
     if use_credibility:
@@ -187,7 +187,7 @@ def main():
             x = ([prem], [hypo])                        
         else:
             text, label = test[i]
-            x = cp.asarray(text) #text   
+            x = text#cp.asarray(text) #text   
 
         if args.interp_method == 'dknn':
             use_cred = True
@@ -244,6 +244,8 @@ def main():
                 words.append(reverse_vocab[hypo[idx]])    
             normalized_scores = [-1 * n for n in normalized_scores] # flip sign so green is drop
 
+        cached_scores.append((words,normalized_scores))
+
         # normalizing for vanilla grad
         # normalize positive and negatives seperately
         # if args.interp_method == 'grad':
@@ -274,7 +276,7 @@ def main():
             word_count[words[idx]] = word_count[words[idx]] + 1
 
         normalized_scores = [0.5 + n for n in normalized_scores]  # center scores
-        cached_scores.append((words,normalized_scores))
+        
 
         visual = colorize(words, normalized_scores, colors=colors)
         with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:

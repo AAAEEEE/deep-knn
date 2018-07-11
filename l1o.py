@@ -9,6 +9,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import math
 from collections import defaultdict
+from copy import deepcopy
 
 import chainer
 import chainer.functions as F
@@ -244,8 +245,7 @@ def main():
                 words.append(reverse_vocab[hypo[idx]])    
             normalized_scores = [-1 * n for n in normalized_scores] # flip sign so green is drop
 
-        cached_scores.append((words,normalized_scores))
-
+        cached_scores.append((words,deepcopy(normalized_scores)))        
         # normalizing for vanilla grad
         # normalize positive and negatives seperately
         # if args.interp_method == 'grad':

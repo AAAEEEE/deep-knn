@@ -40,7 +40,7 @@ class DkNN:
         label_list = []
         print('caching hiddens')
         n_batches = len(train) // batch_size
-        for i, train_batch in enumerate(tqdm(train_iter, total=n_batches)):                        
+        for i, train_batch in enumerate(tqdm(train_iter, total=n_batches)):
             data = converter(train_batch, device=device, with_label=True)
             text = data['xs']
             labels = data['ys']
@@ -108,6 +108,31 @@ class DkNN:
                 overlap = overlap + 1
         return overlap / len(l10_neighbors)
 
+    '''return the distance to the nearest neighbor on the last layer'''
+    def get_nearest_distance(self, xs, layer_id=-1):
+        assert self.tree_list is not None
+        assert self.label_list is not None
+
+        with chainer.using_config('train', False):
+            reg_logits, dknn_layers = self.model.predict(
+                    xs, softmax=True, dknn=True)
+
+        layer = dknn_layers[layer_id]
+        layer.to_cpu()
+        layer = [x for x in layer.data]
+        neighbors, distances = [], []
+        for hidden in layer:
+            if self.lsh:  # use lsh
+                knn = self.tree_list[layer_id].neighbours(hidden)
+                for nn, dis in knn:
+                    neighbors.append(nn)
+                    distances.append(dis)
+            else:  # use kdtree
+                dis, nn = self.tree_list[layer_id].query([hidden], k=1)
+                neighbors.append(nn[0][0])
+                distances.append(dis[0][0])
+        return distances
+
     ''' returns the indices of the nearest neighbors according
     to their position in the training data'''
     def get_neighbors(self, xs):
@@ -136,7 +161,9 @@ class DkNN:
                         neighbors.append(nn[1])
                 else:  # use kdtree
                     _, knn = self.tree_list[layer_id].query([hidden], k=75)
-                    neighbors = knn[0]  # FIXME This is the setting where you only take the last layer
+                    # FIXME This is the setting where you only take the last
+                    # layer
+                    neighbors = knn[0]
         return neighbors
 
     '''forward pass of model for standard inference and dknn'''

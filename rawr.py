@@ -188,7 +188,7 @@ def main():
 
     model, train, test, vocab, setup = setup_model(args)
     is_snli = setup['dataset'] == 'snli'
-    if is_snli and not setup['combine_snli']:
+    if is_snli:
         converter = convert_snli_seq
     else:
         converter = convert_seq

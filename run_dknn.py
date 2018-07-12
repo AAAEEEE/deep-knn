@@ -20,7 +20,6 @@ from utils import setup_model
 '''contains all of the code to run Deep K Nearest Neighbors
 for any model'''
 
-
 class DkNN:
 
     def __init__(self, model, lsh=False):
@@ -229,31 +228,6 @@ class DkNN:
                 knn_cred[i] = cnt_less / len(self._A)
         return knn_cred
 
-
-    ''' get knn confidence for a certain class ys '''
-    def get_knn_confidence(self, xs, ys, calibrated=False, snli=False):
-        assert self.tree_list is not None
-        assert self.label_list is not None
-
-        batch_size = len(xs)
-        if snli:
-            batch_size = len(xs[0])
-        _, knn_logits = self(xs)
-    
-        ys = [int(y) for y in ys]        
-        knn_conf = []
-        for i in range(batch_size):
-            cnt_all = len(knn_logits[i])
-            cnts = dict(Counter(knn_logits[i]).most_common())   
-            p_1 = cnts.get(ys[i], 0) / cnt_all
-            p_2 = 1 - p_1   #FIXME this only works for binary classification. idk how to do this
-            
-            if calibrated and self._A is not None:
-                p_2 = len([x for x in self._A if x >= p_2]) / len(self._A)                    
-            knn_conf.append(1 - p_2)
-        return knn_conf
-
-
     '''returns confidence for standard prediction'''
     def get_regular_confidence(self, xs, ys=None, snli=False):
         reg_logits, knn_logits = self(xs)
@@ -314,7 +288,7 @@ def main():
     args = parser.parse_args()
 
     model, train, test, vocab, setup = setup_model(args)
-    if setup['dataset'] == 'snli' and not setup['combine_snli']:
+    if setup['dataset'] == 'snli':
         converter = convert_snli_seq
         use_snli = True
     else:

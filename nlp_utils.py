@@ -17,13 +17,13 @@ def normalize_text(text):
     return text.strip().lower()
 
 
-def make_vocab(dataset, max_vocab_size=200000, min_freq=2, special=[]):
+def make_vocab(dataset, max_vocab_size=200000, min_freq=2):
     counts = collections.defaultdict(int)
     for tokens, _ in dataset:
         for token in tokens:
             counts[token] += 1
 
-    special = ['<eos>', '<unk>'] + special
+    special = ['<eos>', '<unk>']
     vocab = {x: i for i, x in enumerate(special)}
     for w, c in sorted(counts.items(), key=lambda x: (-x[1], x[0])):
         if len(vocab) >= max_vocab_size or c < min_freq:
@@ -84,25 +84,15 @@ def convert_seq(batch, device=None, with_label=True):
         return to_device_batch([x for x in batch])
 
 
-def transform_snli_to_array(dataset, vocab, with_label=True, combine=False):
-    if with_label:
-        if combine:
-            return [(make_array(premise + hypothesis, vocab),
-                    numpy.array([cls], numpy.int32))
-                    for premise, hypothesis, cls in dataset]
-        else:
-            return [(make_array(premise, vocab),
-                     make_array(hypothesis, vocab),
-                     numpy.array([cls], numpy.int32))
-                    for premise, hypothesis, cls in dataset]
-    else:
-        if combine:
-            return [make_array(premise + ['$$$'] + hypothesis, vocab)
-                    for premise, hypothesis in dataset]
-        else:
-            return [(make_array(premise, vocab), make_array(hypothesis, vocab))
-                    for premise, hypothesis in dataset]
-
+def transform_snli_to_array(dataset, vocab, with_label=True):
+    if with_label:        
+        return [(make_array(premise, vocab),
+                 make_array(hypothesis, vocab),
+                 numpy.array([cls], numpy.int32))
+                for premise, hypothesis, cls in dataset]
+    else:        
+        return [(make_array(premise, vocab), make_array(hypothesis, vocab))
+                for premise, hypothesis in dataset]
 
 def convert_snli_seq(batch, device=None, with_label=True):
     def to_device_batch(batch):

@@ -1,9 +1,3 @@
-
-# coding: utf-8
-
-# In[1]:
-
-
 import os
 import json
 import pickle
@@ -24,10 +18,6 @@ from utils import setup_model
 
 from run_dknn import DkNN
 
-
-# In[2]:
-
-
 parser = argparse.ArgumentParser()
 parser.add_argument('--gpu', '-g', type=int, default=0,
                     help='GPU ID (negative value indicates CPU)')
@@ -39,7 +29,7 @@ parser.add_argument('--lsh', action='store_true', default=False,
 args = parser.parse_args(['--model-setup', 'result/snli_bilstm/args.json'])
 
 model, train, test, vocab, setup = setup_model(args)
-if setup['dataset'] == 'snli' and not setup['combine_snli']:
+if setup['dataset'] == 'snli':
     converter = convert_snli_seq
 else:
     converter = convert_seq
@@ -48,10 +38,6 @@ else:
 args.batchsize = 64
 max_beam_size = 5
 
-
-# In[3]:
-
-
 with open(os.path.join(setup['save_path'], 'calib.json')) as f:
     calibration_idx = json.load(f)
 
@@ -59,23 +45,11 @@ calibration = [train[i] for i in calibration_idx]
 train = [x for i, x in enumerate(train) if i not in calibration_idx]
 train = random.sample(train, 10000)
 
-
-# In[4]:
-
-
 dknn = DkNN(model)
 dknn.build(train, batch_size=setup['batchsize'], converter=converter, device=args.gpu)
 dknn.calibrate(calibration, batch_size=setup['batchsize'], converter=converter, device=args.gpu)
 
-
-# In[5]:
-
-
 df = {'confidence': [], 'data': [], 'label': [], 'type': []}
-
-
-# In[6]:
-
 
 og_iter = chainer.iterators.SerialIterator(test, args.batchsize, repeat=False, shuffle=False)
 
@@ -97,10 +71,6 @@ for batch in tqdm_notebook(og_iter, total=n_batches):
     df['data'].extend('original' for _ in knn_cred)
     df['label'].extend(knn_pred)
     df['type'].extend('knn_cred' for _ in knn_cred)
-
-
-# In[7]:
-
 
 ckp = pickle.load(open('rawr_dev.pkl', 'rb'))
 rd_test =  [x[0]['reduced_input'] for x in ckp]
@@ -125,20 +95,10 @@ for batch in tqdm_notebook(rd_iter, total=n_batches):
     df['label'].extend(knn_pred)
     df['type'].extend('knn_cred' for _ in knn_cred)
 
-
-# In[8]:
-
-
 df = pd.DataFrame(df)
-
-
-# In[9]:
-
-
 (
     ggplot(df) +
     aes(x='confidence', color='data', fill='data') +
     geom_density(alpha=.45) +
     facet_grid('type ~ label')
 )
-

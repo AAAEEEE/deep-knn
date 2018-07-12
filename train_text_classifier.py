@@ -35,8 +35,7 @@ def create_parser():
     parser.add_argument('--layer', '-l', type=int, default=3,
                         help='Number of layers of RNN or MLP following CNN')
     parser.add_argument('--dropout', '-d', type=float, default=0.4,
-                        help='Dropout rate')
-    parser.add_argument('--combine_snli', action='store_true')
+                        help='Dropout rate')    
     parser.add_argument('--dataset', '-data', default='stsa.binary',
                         choices=['dbpedia', 'imdb.binary', 'imdb.fine',
                                  'TREC', 'stsa.binary', 'stsa.fine',
@@ -63,7 +62,7 @@ def main():
             char_based=args.char_based)
     elif args.dataset == 'snli':
         train, test, vocab = text_datasets.get_snli(
-            char_based=args.char_based, combine=args.combine_snli)
+            char_based=args.char_based)
     elif args.dataset.startswith('imdb.'):
         train, test, vocab = text_datasets.get_imdb(
             fine_grained=args.dataset.endswith('.fine'),
@@ -136,7 +135,7 @@ def main():
     encoder = Encoder(n_layers=args.layer, n_vocab=len(vocab),
                       n_units=args.unit, dropout=args.dropout)
     if args.dataset == 'snli':
-        model = nets.SNLIClassifier(encoder, combine=args.combine_snli)
+        model = nets.SNLIClassifier(encoder)
     else:
         model = nets.TextClassifier(encoder, n_class)
 
@@ -164,7 +163,7 @@ def main():
     # optimizer.add_hook(chainer.optimizer.WeightDecay(1e-4))
 
     # Set up a trainer
-    if args.dataset == 'snli' and not args.combine_snli:
+    if args.dataset == 'snli':
         converter = convert_snli_seq
     else:
         converter = convert_seq

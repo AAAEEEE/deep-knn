@@ -19,8 +19,7 @@ def setup_model(args):
             char_based=setup['char_based'])
     elif dataset == 'snli':
         train, test, vocab = text_datasets.get_snli(
-            char_based=setup['char_based'],
-            combine=setup['combine_snli'])
+            char_based=setup['char_based'])
     elif dataset.startswith('imdb.'):
         train, test, vocab = text_datasets.get_imdb(
             fine_grained=dataset.endswith('.fine'),
@@ -49,7 +48,7 @@ def setup_model(args):
     encoder = Encoder(n_layers=setup['layer'], n_vocab=len(vocab),
                       n_units=setup['unit'], dropout=setup['dropout'])
     if dataset == 'snli':
-        model = nets.SNLIClassifier(encoder, combine=setup['combine_snli'])
+        model = nets.SNLIClassifier(encoder)
     else:
         model = nets.TextClassifier(encoder, n_class)
     chainer.serializers.load_npz(setup['model_path'], model)

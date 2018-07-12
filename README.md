@@ -6,7 +6,9 @@ It also contains code for common interpretation techniques in natural language p
 
 ## Dependencies
 
-This code is written in python. Dependencies include:
+This code is written in python using the highly underrated Chainer framework. If you know PyTorch, you will love it =).
+
+Dependencies include:
 
 * Python 2/3
 * [Chainer](https://chainer.org/)
@@ -22,19 +24,28 @@ If you want to visualize saliency maps:
 
 
 
-TODO:
-remove combine snli
+This code is built off Chainers [text classification example](https://github.com/chainer/chainer/tree/master/examples/text_classification). See their documentation and code to understand the basic layout of our project. 
 
-# TODO
-    # 75 neighbors at each layer, or 75 neighbors total?
-    # before or after relu?
-    # Consider using a different distance than euclidean, cosine?
+## Files
 
 
+To train a model:  
+```
+python train_text_classifier.py --dataset stsa.binary --model cnn
+```
+The output directory `result` contains:  
+- `best_model.npz`: a model snapshot, which won the best accuracy for validation data during training
+- `vocab.json`: model's vocabulary dictionary as a json file
+- `args.json`: model's setup as a json file, which also contains paths of the model and vocabulary
+- `calib.json`: The indices of the held out training data that will be used to calibrate the DkNN model
 
-This code is built off chainers text classification demo.
+To run a model with and without DkNN:  
+```
+python run_dknn.py --model-setup results/DATASET_MODEL/args.json
+```
 
-
+- Where `results/DATASET_MODEL/args.json` is the argument log that is generated after training a model
+- This command will store the activations for all of the training data into a KDTree, calibrate the credibility values, and run the model with and without DkNN.  
 
 ## Word Vectors
 
@@ -46,8 +57,7 @@ unzip glove.840B.300d.zip
 rm glove.840B.300d.zip
 ```
 
-Then pass the pretrained vectors in when training by using the command line argument ```python train_text_classifier.py --word_vectors glove.840B.300d.txt``` 
-
+Then pass the pretrained vectors in using the argument `--word_vectors glove.840B.300d.txt` when training a model using `train_text_classifier.py`
 
 ## References
 
@@ -55,7 +65,7 @@ Please consider citing [1](#dknn-language) if you found this code or our work be
 
 ### TODO title
 
-[1] Eric Wallace\* and Shi Feng\* and Jordan Boyd-Graber, [*TODO title*](PAPER LINK HERE)
+[1] Eric Wallace and Shi Feng and Jordan Boyd-Graber, [*TODO title*](PAPER LINK HERE)
 
 ```
 @article{TODO,
@@ -65,9 +75,6 @@ Please consider citing [1](#dknn-language) if you found this code or our work be
   year={2018},  
 }
 ```
-
-(\* These authors contributed equally.)
-
 
 ## Contact
 

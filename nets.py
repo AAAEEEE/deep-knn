@@ -156,8 +156,7 @@ class SNLIClassifier(chainer.Chain):
     combines the results of the two last states and puts them through
     FC layers. The concatenation of the final hidden states is inspired
     from infersent '''
-    def __init__(self, encoder, n_class=3, n_layers=3, dropout=0.1,
-                 combine=False):
+    def __init__(self, encoder, n_class=3, n_layers=3, dropout=0.1):
         super(SNLIClassifier, self).__init__()
         with self.init_scope():
             self.encoder = encoder
@@ -168,13 +167,8 @@ class SNLIClassifier(chainer.Chain):
                 self.mlp = MLP(n_layers, encoder.out_units * 4, dropout)
                 self.output = L.Linear(encoder.out_units * 4, n_class)
 
-        self.dropout = dropout
-        if combine:
-            self.n_dknn_layers = self.mlp.n_dknn_layers + \
-                                 self.encoder.n_dknn_layers
-        else:
-            self.n_dknn_layers = self.mlp.n_dknn_layers + 1
-        self.combine = combine
+        self.dropout = dropout                
+        self.n_dknn_layers = self.mlp.n_dknn_layers + 1        
 
     def __call__(self, xs, ys):
         concat_outputs = self.predict(xs)
@@ -189,8 +183,7 @@ class SNLIClassifier(chainer.Chain):
     def get_onehot_grad(self, xs, ys=None):
         if ys is None:
             with chainer.using_config('train', False):
-                ys = self.predict(xs, argmax=True)
-        assert not self.combine        
+                ys = self.predict(xs, argmax=True)        
         u, exs_prem = self.encoder.get_grad(xs[0])
         v, exs_hypo = self.encoder.get_grad(xs[1])        
         encodings = F.concat((u, v, F.absolute(u-v), u*v), axis=1)
@@ -216,18 +209,12 @@ class SNLIClassifier(chainer.Chain):
         return onehot_grad
 
     def predict(self, xs, softmax=False, argmax=False, dknn=False):
-        dknn_layers = []
-        if self.combine:
-            if dknn:
-                encodings, dknn_layers = self.encoder(xs, dknn=True)
-            else:
-                encodings = self.encoder(xs, dknn=False)
-        else:
-            u = self.encoder(xs[0], dknn=False)
-            v = self.encoder(xs[1], dknn=False)            
-            # concatenate results as done in infersent
-            encodings = F.concat((u, v, F.absolute(u-v), u*v), axis=1)
-            dknn_layers = [encodings]        
+        dknn_layers = []    
+        u = self.encoder(xs[0], dknn=False)
+        v = self.encoder(xs[1], dknn=False)            
+        # concatenate results as done in infersent
+        encodings = F.concat((u, v, F.absolute(u-v), u*v), axis=1)
+        dknn_layers = [encodings]        
 
         if dknn:
             outputs, _dknn_layers = self.mlp(encodings, dknn=True)

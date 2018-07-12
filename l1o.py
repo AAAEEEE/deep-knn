@@ -20,19 +20,6 @@ from nlp_utils import convert_seq, convert_snli_seq
 from utils import setup_model
 from run_dknn import DkNN
 
-
-# def bigram_flatten(x):
-#     '''generate version of x with each bigrams removed'''
-#     assert x.ndim == 1
-#     assert x.shape[0] > 1
-#     if cp.get_array_module(x) == cp:
-#         x = cp.asnumpy(x)
-#     xs = []
-#     for i in range(x.shape[0]):
-#         xs.append(np.concatenate((x[:i], x[i+2:]), axis=0))
-#     return xs
-
-
 def snli_flatten(x):
     '''generate version of x with each token removed'''
     prem, hypo = x
@@ -58,7 +45,7 @@ def flatten(x):
 
 def leave_one_out(dknn, converter,
                   x,
-                  bigrams=False, snli=False,
+                  snli=False,
                   use_credibility=True):
     gpu = dknn.model.xp == cp
     device = 0 if gpu else -1
@@ -78,9 +65,6 @@ def leave_one_out(dknn, converter,
     if use_credibility:
         scores = dknn.get_credibility(xs, ys, use_snli=snli)
         og_score = og_score[0]
-        # scores = []
-        # for input_x in xs:
-        #     scores.append(dknn.get_neighbor_change([input_x], [x]))
     else:
         scores = dknn.get_regular_confidence(xs, ys, snli=snli)
         scores = scores.tolist()
@@ -91,13 +75,11 @@ def leave_one_out(dknn, converter,
 
 def vanilla_grad(model, converter,
                  x,
-                 bigrams=False, snli=False,
+                 snli=False,
                  use_credibility=False):
     gpu = model.xp == cp
     device = 0 if gpu else -1
-    inputs = converter([x], device=device, with_label=False)
-    if bigrams:
-        warnings.warn('bigrams not supported for vanilla grad')
+    inputs = converter([x], device=device, with_label=False)    
     if snli:
         warnings.warn('snli not supported for vanilla grad')
     with chainer.using_config('train', False):
@@ -141,7 +123,7 @@ def main():
     reverse_vocab = {v: k for k, v in vocab.items()}
 
     use_snli = False
-    if setup['dataset'] == 'snli' and not setup['combine_snli']:
+    if setup['dataset'] == 'snli':
         converter = convert_snli_seq
         colors = 'PiYG'
         use_snli = True
@@ -172,20 +154,12 @@ def main():
     word_count = defaultdict(lambda: 0)
     cached_scores = []
 
-    # for j in range(len(test) * 3):
-    #    i = j // 3
-    #     if args.interp_method == 'dknn':
-    #         args.interp_method = 'softmax'
-    #     elif args.interp_method == 'softmax':
-    #         args.interp_method = 'grad'
-    #     elif args.interp_method == 'grad':
-    #         args.interp_method = 'dknn'
     if args.interp_method == 'dknn' or args.interp_method == 'softmax':
         ranker = partial(leave_one_out, dknn, converter)
     elif args.interp_method == 'grad':
         ranker = partial(vanilla_grad, model, converter)
     else:
-        exit("Method")
+        exit("Invalid Interpretation Method")
 
     use_cred = (args.interp_method == 'dknn')
 
@@ -196,13 +170,7 @@ def main():
         else:
             text, label = test[i]
             x = text
-        label = label[0]
-        
-
-        if use_snli and label != 0: ############ skip non entailment to look for terribly
-            continue            
-        if not use_snli and label == 0: ############ skip negative to look for terribly
-            continue            
+        label = label[0]    
 
         prediction, original_score, scores = ranker(
                 x, snli=use_snli, use_credibility=use_cred)
@@ -221,52 +189,28 @@ def main():
                 print(score, reverse_vocab[hypo[idx]])
             else:
                 print(score, reverse_vocab[text[idx]])
+        print()
+        print()
+   
 
-        # print()
-        # # bigrams
-        # scores = ranker(x, y, bigrams=True)
-        # scores = list(enumerate(scores))
-        # sorted_scores = sorted(scores, key=lambda x: x[1])
-        # bigrams = [b for l in text for b in zip(x[:-1], x[1:])]
-        # for idx, score in sorted_scores[:]:
-        #     if score < 1.0:
-        #         print(score, reverse_vocab[bigrams[idx][0]] + ' ' + reverse_vocab[bigrams[idx][1]])
-
+        # get drop in score for l10, and flip sign for sentiment
         normalized_scores = []
         words = []
-        # plot sentiment results visualize results in heatmap
         if not use_snli:
             for idx, score in enumerate(scores):
                 if args.interp_method == 'dknn' or args.interp_method == 'softmax':
                     normalized_scores.append(score - original_score)  # for l10 drop in score
                 else:
                     normalized_scores.append(score)  # for grad its not a drop
-                words.append(reverse_vocab[text[idx]])
-            if prediction == 1:  # flip sign if positive
-                normalized_scores = [-1 * n for n in normalized_scores]
-            if 'terribly' not in words:
-                continue
-            else:
-                print("terribly found")
-
-        # plot snli results visualize results in heatmap
-        if use_snli:
-            for idx, score in enumerate(scores):
-                if args.interp_method == 'dknn' or args.interp_method == 'softmax':
-                    normalized_scores.append(score - original_score)  # for l10 drop in score
+                if snli:
+                    words.append(reverse_vocab[hypo[idx]])
                 else:
-                    normalized_scores.append(score)  # for grad its not a drop
-                words.append(reverse_vocab[hypo[idx]])
-            normalized_scores = [-1 * n for n in normalized_scores] # flip sign so green is drop
-            if 'outside' not in words:
-                continue
-            else:
-                print("outside found")
+                    words.append(reverse_vocab[text[idx]])
+            if not snli and prediction == 1:  # flip sign if positive sentiment
+                normalized_scores = [-1 * n for n in normalized_scores]            
 
         cached_scores.append((words,deepcopy(normalized_scores)))
-        # normalizing for vanilla grad
-        # normalize positive and negatives seperately
-        # if args.interp_method == 'grad':
+        # normalize scores across the words, doing positive and negatives seperately        
         total_score_pos = 1e-6    # 1e-6 for case where all positive/neg scores are 0
         total_score_neg = 1e-6
         for idx, s in enumerate(normalized_scores):
@@ -276,17 +220,9 @@ def main():
                 total_score_pos = total_score_pos + s
         for idx, s in enumerate(normalized_scores):
             if s < 0:
-                normalized_scores[idx] = (s / total_score_neg) / 2
+                normalized_scores[idx] = (s / total_score_neg) / 2   # / by 2 to get max of -0.5
             else:
                 normalized_scores[idx] = (s / total_score_pos) / 2
-
-        # normalize total score for vanilla grad
-        # if args.interp_method == 'grad':
-        #     total_score = 0
-        #     for idx, s in enumerate(normalized_scores):
-        #         total_score = total_score + math.fabs(s)
-        #     for idx, s in enumerate(normalized_scores):
-        #         normalized_scores[idx] = (s / total_score) / 2
 
         # tally individual word influence scores
         for idx, norm_score in enumerate(normalized_scores):
@@ -294,104 +230,75 @@ def main():
             word_count[words[idx]] = word_count[words[idx]] + 1
 
         normalized_scores = [0.5 + n for n in normalized_scores]  # center scores
+        visual = colorize(words, normalized_scores, colors=colors)  # generate visualize
+
+        # plot snli results        
+        if snli:        
+            with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
+                if label == 0:
+                    f.write('Ground Truth Label: Entailment')
+                elif label == 1:
+                    f.write('Ground Truth Label: Neutral')
+                elif label == 2:
+                    f.write('Ground Truth Label: Contradiction')                
+
+                if prediction == 0:
+                    f.write("Prediction: Entailment ({})         ".format(original_score))
+                elif prediction == 1:
+                    f.write("Prediction: Neutral ({})         ".format(original_score))
+                elif prediction == 2:
+                    f.write("Prediction: Contradiction ({})         ".format(original_score))
+
+                f.write("<br>")
+                f.write(' '.join(reverse_vocab[w] for w in prem) + '<br>')
+                f.write(visual + "<br>")
+                f.write("<br>")
+
+        else: # plot sentiment results
+            with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
+                f.write('<tr>')
+                f.write('<td>')
+                if args.interp_method == 'dknn':
+                    f.write('DkNN Leave-One-Out')
+                elif args.interp_method == 'softmax':
+                    f.write('Softmax Leave-One-Out')
+                else:
+                    f.write('Vanilla Gradient')
+                f.write('</td>')
+
+                f.write('<td>')
+                if label == 1:
+                    f.write('Label: Positive')
+                else:
+                    f.write('Label: Negative')
+                f.write('</td>')
+
+                f.write('<td>')
+                if prediction == 1:
+                    f.write("Prediction: Positive ({0:.2f})         ".format(original_score))
+                else:
+                    f.write("Prediction: Negative ({0:.2f})         ".format(original_score))
+                f.write('</td>')
+                
+                f.write('<td>')
+                f.write(visual)
+                f.write('</td>')
+                f.write('</tr>')
+     
+            # print neighbors, not very interpretable for language
+            # neighbors = dknn.get_neighbors(x)
+            # print('neighbors:')
+            # f.write('&nbsp;&nbsp;&nbsp;&nbsp;Nearest Neighbor Sentences: <br>')
+            # for neighbor in neighbors[:5]:
+            #    curr_nearest_neighbor_input_sentence = '     '
+            #    for word in train[neighbor][0]:
+            #        curr_nearest_neighbor_input_sentence += reverse_vocab[word] + ' '
+            #    print(curr_nearest_neighbor_input_sentence)
+            #    f.write('&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' + curr_nearest_neighbor_input_sentence + '<br>')
+            # f.write('<br>')
 
 
-        visual = colorize(words, normalized_scores, colors=colors)
-        with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
-            f.write('<tr>')
-            f.write('<td>')
-            if args.interp_method == 'dknn':
-                f.write('DkNN Leave-One-Out')
-            elif args.interp_method == 'softmax':
-                f.write('Softmax Leave-One-Out')
-            else:
-                f.write('Vanilla Gradient')
-            f.write('</td>')
-
-            f.write('<td>')
-            if label == 1:
-                f.write('Label: Positive')
-            else:
-                f.write('Label: Negative')
-            f.write('</td>')
-
-            f.write('<td>')
-            if prediction == 1:
-                f.write("Prediction: Positive ({0:.2f})         ".format(original_score))
-            else:
-                f.write("Prediction: Negative ({0:.2f})         ".format(original_score))
-            f.write('</td>')
-
-            f.write('<td>')
-            f.write(visual)
-            f.write('</td>')
-
-            f.write('</tr>')
-
-        # # plot snli results
-        # visual = colorize(words, normalized_scores, colors = colors)
-        # with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
-        #     if label == 0:
-        #         f.write('Ground Truth Label: Entailment')
-        #     elif label == 1:
-        #         f.write('Ground Truth Label: Neutral')
-        #     elif label == 2:
-        #         f.write('Ground Truth Label: Contradiction')
-        #     else:
-        #         exit("Label not found")
-
-        #     if prediction == 0:
-        #         f.write("Prediction: Entailment ({})         ".format(original_score))
-        #     elif prediction == 1:
-        #         f.write("Prediction: Neutral ({})         ".format(original_score))
-        #     elif prediction == 2:
-        #         f.write("Prediction: Contradiction ({})         ".format(original_score))
-        #     else:
-        #         eixt("Prediction Label not found")
-        #     f.write("<br>")
-        #     f.write(' '.join(reverse_vocab[w] for w in prem) + '<br>')
-        #     f.write(visual + "<br>")
-        #     f.write("<br>")
-
-        # # display scores normalized across words
-        # # normalized_scores = []
-        # # for idx, score in scores[:]:
-        # #     normalized_scores.append(score - original_score)
-        # # if prediction == 1:  # flip sign if positive
-        # #     normalized_scores = [-1 * n for n in normalized_scores]
-        # # total_score = 1e-6
-        # # for p in normalized_scores:
-        # #     total_score += math.fabs(p)
-        # # normalized_scores = [0.5 + n / total_score for n in normalized_scores]
-        # # visual = colorize(words, normalized_scores)
-        # # with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
-        # #     if label == 1:
-        # #         f.write('Ground Truth Label: Positive&nbsp;')
-        # #     else:
-        # #         f.write('Ground Truth Label: Negative&nbsp;')
-        # #     if prediction == 1:
-        # #         f.write("Prediction: Positive ({})         ".format(original_score))
-        # #     else:
-        # #         f.write("Prediction: Negative ({})         ".format(original_score))
-        # #     f.write(visual + "<br>")
-
-        #     # print neighbors
-        #     neighbors = dknn.get_neighbors(x)
-        #     print('neighbors:')
-        #     f.write('&nbsp;&nbsp;&nbsp;&nbsp;Nearest Neighbor Sentences: <br>')
-        #     for neighbor in neighbors[:5]:
-        #        curr_nearest_neighbor_input_sentence = '     '
-        #        for word in train[neighbor][0]:
-        #            curr_nearest_neighbor_input_sentence += reverse_vocab[word] + ' '
-        #        print(curr_nearest_neighbor_input_sentence)
-        #        f.write('&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' + curr_nearest_neighbor_input_sentence + '<br>')
-        #     f.write('<br>')
-
-        #     print()
-        #     print()
-
-
-    with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
+    with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f: # end htmp table
         f.write('</table>')
 
     for word, total_score in list(word_count.items()):

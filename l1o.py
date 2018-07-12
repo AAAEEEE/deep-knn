@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 import pickle
 import argparse
+import os
+import json
 import numpy as np
 import cupy as cp
 import warnings
@@ -147,12 +149,20 @@ def main():
         converter = convert_seq
         colors = 'RdBu'
 
-    dknn = DkNN(model, args.lsh)
+    with open(os.path.join(setup['save_path'], 'calib.json')) as f:
+        calibration_idx = json.load(f)
+
+    calibration = [train[i] for i in calibration_idx]
+    train = [x for i, x in enumerate(train) if i not in calibration_idx]
+
+    '''get dknn layers of training data'''
+    dknn = DkNN(model, lsh=args.lsh)
     dknn.build(train, batch_size=setup['batchsize'],
                converter=converter, device=args.gpu)
 
     # need to select calibration data more carefully
-    dknn.calibrate(train[:50], batch_size=setup['batchsize'],
+    '''calibrate the dknn credibility values'''
+    dknn.calibrate(calibration, batch_size=setup['batchsize'],
                    converter=converter, device=args.gpu)
 
     with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
@@ -163,7 +173,7 @@ def main():
     cached_scores = []
 
     # for j in range(len(test) * 3):
-    #     i = j // 3
+    #    i = j // 3
     #     if args.interp_method == 'dknn':
     #         args.interp_method = 'softmax'
     #     elif args.interp_method == 'softmax':

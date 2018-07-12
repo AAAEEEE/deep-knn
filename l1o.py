@@ -2,7 +2,7 @@
 import pickle
 import argparse
 import numpy as np
-#import cupy as cp
+import cupy as cp
 import warnings
 from functools import partial
 import matplotlib
@@ -33,81 +33,76 @@ from run_dknn import DkNN
 
 def snli_flatten(x):
     '''generate version of x with each token removed'''
-    #if cp.get_array_module(x) == cp:
-     #   x = cp.asnumpy(x)
-    reduced_hypo = []
-    prem = []    
-    for i in range(len(x[1][0])):
-        reduced_hypo.append(np.concatenate((x[1][0][:i], x[1][0][i+1:]), axis=0))
-        prem.append(x[0][0])
+    prem, hypo = x
+    flatten_hypo = []
+    flatten_prem = []
+    for i in range(hypo.shape[0]):
+        h = np.concatenate((hypo[:i], hypo[i+1:]), axis=0)
+        flatten_hypo.append(h)
+        flatten_prem.append(prem)
 
-    xs = (prem, reduced_hypo)        
-    return xs
+    return (flatten_prem, flatten_hypo)
 
 
 def flatten(x):
     '''generate version of x with each token removed'''
     assert x.ndim == 1
     assert x.shape[0] > 1
-    #if cp.get_array_module(x) == cp:
-        #x = cp.asnumpy(x)
-    xs = []    
+    xs = []
     for i in range(x.shape[0]):
         xs.append(np.concatenate((x[:i], x[i+1:]), axis=0))
     return xs
 
 
-def leave_one_out(dknn, x, bigrams=False, snli=False, use_credibility=True):
-    if not snli:
-        x = [x]
-    ys, original_score, _, reg_pred, reg_conf = dknn.predict(x, snli=snli)
-    if not snli:
-        x = x[0]
-    
-    if use_credibility:
-        y = ys[0]
-    else:
-        y = reg_pred[0]    
+def leave_one_out(dknn, converter,
+                  x,
+                  bigrams=False, snli=False,
+                  use_credibility=True):
+    gpu = dknn.model.xp == cp
+    device = 0 if gpu else -1
+    inputs = converter([x], device=device, with_label=False)
+    ys, og_score, _, reg_pred, reg_conf = dknn.predict(inputs, snli=snli)
 
-    #gpu = cp.get_array_module(x) == cp
-    #x = cp.asnumpy(x)
-    if snli:
-        xs = snli_flatten(x)
-        ys = [int(y) for _ in xs[0]]
-    elif bigrams:
-        xs = bigram_flatten(x)
-        ys = [int(y) for _ in xs]
-    else:
-        xs = flatten(x)
-        ys = [int(y) for _ in xs]
-    #if gpu:
-        #xs = [cp.asarray(x) for x in xs]
-    
+    xs = snli_flatten(x) if snli else flatten(x)
+    batch_size = len(xs[0]) if snli else len(xs)
+    y = ys[0] if use_credibility else reg_pred[0]
+    ys = [np.array([y], dtype=np.int32) for _ in range(batch_size)]
+    inputs = list(zip(xs[0], xs[1], ys)) if snli else list(zip(xs, ys))
+    inputs = converter(inputs, device=device)
+    xs = inputs['xs']
+    ys = inputs['ys']
+
     # rank
     if use_credibility:
-        scores = dknn.get_credibility(xs, ys, use_snli=snli) 
-        original_score = original_score[0]
+        scores = dknn.get_credibility(xs, ys, use_snli=snli)
+        og_score = og_score[0]
         # scores = []
         # for input_x in xs:
         #     scores.append(dknn.get_neighbor_change([input_x], [x]))
     else:
-        scores = dknn.get_regular_confidence(xs, ys)
-        original_score = reg_conf[0]
+        scores = dknn.get_regular_confidence(xs, ys, snli=snli)
+        scores = scores.tolist()
+        og_score = reg_conf[0]
 
-    return y, original_score, scores
+    return y, og_score, scores
 
 
-def vanilla_grad(model, x, bigrams=False, snli=False, use_credibility=False):
+def vanilla_grad(model, converter,
+                 x,
+                 bigrams=False, snli=False,
+                 use_credibility=False):
+    gpu = model.xp == cp
+    device = 0 if gpu else -1
+    inputs = converter([x], device=device, with_label=False)
     if bigrams:
         warnings.warn('bigrams not supported for vanilla grad')
     if snli:
         warnings.warn('snli not supported for vanilla grad')
     with chainer.using_config('train', False):
-        output = model.predict([x], softmax=True)
-        y = int(F.argmax(output).data)
-        original_score = float(F.max(output).data)
-    onehot_grad = model.get_onehot_grad([x])[0].data
-    onehot_grad = onehot_grad.tolist()
+        output = cp.asnumpy(model.predict(inputs, softmax=True))
+        y = np.argmax(output)
+        original_score = np.max(output)
+    onehot_grad = model.get_onehot_grad([x])[0].data.tolist()
     return y, original_score, onehot_grad
 
 
@@ -176,28 +171,27 @@ def main():
     #     elif args.interp_method == 'grad':
     #         args.interp_method = 'dknn'
     if args.interp_method == 'dknn' or args.interp_method == 'softmax':
-        ranker = partial(leave_one_out, dknn)
+        ranker = partial(leave_one_out, dknn, converter)
     elif args.interp_method == 'grad':
-        ranker = partial(vanilla_grad, model)
+        ranker = partial(vanilla_grad, model, converter)
     else:
         exit("Method")
 
+    use_cred = (args.interp_method == 'dknn')
+
     for i in range(len(test)):
-        if use_snli:            
-            prem, hypo, label = test[i]            
-            x = ([prem], [hypo])                        
+        if use_snli:
+            prem, hypo, label = test[i]
+            x = (prem, hypo)
         else:
             text, label = test[i]
-            x = text#cp.asarray(text) #text   
+            x = text
+        label = label[0]
 
-        if args.interp_method == 'dknn':
-            use_cred = True
-        else:
-            use_cred = False
-
-        prediction, original_score, scores = ranker(x, snli=use_snli, use_credibility=use_cred)            
+        prediction, original_score, scores = ranker(
+                x, snli=use_snli, use_credibility=use_cred)
         sorted_scores = sorted(list(enumerate(scores)), key=lambda x: x[1])
-        print('label: {}'.format(label[0]))
+        print('label: {}'.format(label))
         print('prediction: {} ({})'.format(prediction, original_score))
 
         if use_snli:
@@ -205,10 +199,10 @@ def main():
             print('Hypothesis: ' + ' '.join(reverse_vocab[w] for w in hypo))
         else:
             print(' '.join(reverse_vocab[w] for w in text))
-        
+
         for idx, score in sorted_scores:
             if use_snli:
-                print(score, reverse_vocab[hypo[idx]])                
+                print(score, reverse_vocab[hypo[idx]])
             else:
                 print(score, reverse_vocab[text[idx]])
 
@@ -224,8 +218,8 @@ def main():
 
         normalized_scores = []
         words = []
-        # plot sentiment results visualize results in heatmap        
-        if not use_snli:            
+        # plot sentiment results visualize results in heatmap
+        if not use_snli:
             for idx, score in enumerate(scores):
                 if args.interp_method == 'dknn' or args.interp_method == 'softmax':
                     normalized_scores.append(score - original_score)  # for l10 drop in score
@@ -233,19 +227,19 @@ def main():
                     normalized_scores.append(score)  # for grad its not a drop
                 words.append(reverse_vocab[text[idx]])
             if prediction == 1:  # flip sign if positive
-                normalized_scores = [-1 * n for n in normalized_scores]        
+                normalized_scores = [-1 * n for n in normalized_scores]
 
         # plot snli results visualize results in heatmap
-        if use_snli:            
+        if use_snli:
             for idx, score in enumerate(scores):
                 if args.interp_method == 'dknn' or args.interp_method == 'softmax':
                     normalized_scores.append(score - original_score)  # for l10 drop in score
                 else:
                     normalized_scores.append(score)  # for grad its not a drop
-                words.append(reverse_vocab[hypo[idx]])    
+                words.append(reverse_vocab[hypo[idx]])
             normalized_scores = [-1 * n for n in normalized_scores] # flip sign so green is drop
 
-        cached_scores.append((words,deepcopy(normalized_scores)))        
+        cached_scores.append((words,deepcopy(normalized_scores)))
         # normalizing for vanilla grad
         # normalize positive and negatives seperately
         # if args.interp_method == 'grad':
@@ -269,14 +263,14 @@ def main():
         #         total_score = total_score + math.fabs(s)
         #     for idx, s in enumerate(normalized_scores):
         #         normalized_scores[idx] = (s / total_score) / 2
-    
-        # tally individual word influence scores 
-        for idx, norm_score in enumerate(normalized_scores):  
+
+        # tally individual word influence scores
+        for idx, norm_score in enumerate(normalized_scores):
             word_importance_scores[words[idx]] = word_importance_scores[words[idx]] + norm_score
             word_count[words[idx]] = word_count[words[idx]] + 1
 
         normalized_scores = [0.5 + n for n in normalized_scores]  # center scores
-        
+
 
         visual = colorize(words, normalized_scores, colors=colors)
         with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
@@ -304,13 +298,13 @@ def main():
                 f.write("Prediction: Negative ({0:.2f})         ".format(original_score))
             f.write('</td>')
 
-            f.write('<td>') 
+            f.write('<td>')
             f.write(visual)
             f.write('</td>')
-    
+
             f.write('</tr>')
 
-        # # plot snli results   
+        # # plot snli results
         # visual = colorize(words, normalized_scores, colors = colors)
         # with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
         #     if label == 0:
@@ -329,7 +323,7 @@ def main():
         #     elif prediction == 2:
         #         f.write("Prediction: Contradiction ({})         ".format(original_score))
         #     else:
-        #         eixt("Prediction Label not found")                     
+        #         eixt("Prediction Label not found")
         #     f.write("<br>")
         #     f.write(' '.join(reverse_vocab[w] for w in prem) + '<br>')
         #     f.write(visual + "<br>")
@@ -380,12 +374,12 @@ def main():
         if total_score < 5:  # 5 or higher to be counted
             del word_count[word]
             del word_importance_scores[word]
-            
-    for word, total_score in word_importance_scores.items():        
-        word_importance_scores[word] = word_importance_scores[word] / word_count[word]        
+
+    for word, total_score in word_importance_scores.items():
+        word_importance_scores[word] = word_importance_scores[word] / word_count[word]
 
     sorted_by_value = sorted(word_importance_scores.items(), key=lambda kv: kv[1])
-    pickle.dump(sorted_by_value, open(args.interp_method + '_sorted.pkl','wb'))    
+    pickle.dump(sorted_by_value, open(args.interp_method + '_sorted.pkl','wb'))
     print(sorted_by_value)
 
     pickle.dump(cached_scores, open(args.interp_method + '_cached_scores.pkl','wb'))

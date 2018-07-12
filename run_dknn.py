@@ -4,6 +4,8 @@ import json
 import argparse
 from tqdm import tqdm
 from collections import Counter
+import numpy as np
+import cupy as cp
 
 import chainer
 import chainer.functions as F
@@ -228,9 +230,15 @@ class DkNN:
         return knn_cred
 
     '''returns confidence for standard prediction'''
-    def get_regular_confidence(self, xs, snli=False):
+    def get_regular_confidence(self, xs, ys=None, snli=False):
         reg_logits, knn_logits = self(xs)
-        reg_conf = F.max(reg_logits, 1).data.tolist()
+        reg_logits = cp.asnumpy(reg_logits)
+        if ys is None:
+            reg_conf = np.max(reg_logits, axis=1)
+        else:
+            batch_size = reg_logits.shape[0]
+            ys = np.array([int(y) for y in ys], dtype=np.int32)
+            reg_conf = reg_logits[np.arange(batch_size), ys]
         return reg_conf
 
     '''predicts using normal inference and dknn. Retrieves the nearest neighbor

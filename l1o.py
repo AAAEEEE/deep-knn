@@ -197,6 +197,12 @@ def main():
             text, label = test[i]
             x = text
         label = label[0]
+        
+
+        if use_snli and label != 0: ############ skip non entailment to look for terribly
+            continue            
+        if not use_snli and label == 0: ############ skip negative to look for terribly
+            continue            
 
         prediction, original_score, scores = ranker(
                 x, snli=use_snli, use_credibility=use_cred)
@@ -238,6 +244,10 @@ def main():
                 words.append(reverse_vocab[text[idx]])
             if prediction == 1:  # flip sign if positive
                 normalized_scores = [-1 * n for n in normalized_scores]
+            if 'terribly' not in words:
+                continue
+            else:
+                print("terribly found")
 
         # plot snli results visualize results in heatmap
         if use_snli:
@@ -248,6 +258,10 @@ def main():
                     normalized_scores.append(score)  # for grad its not a drop
                 words.append(reverse_vocab[hypo[idx]])
             normalized_scores = [-1 * n for n in normalized_scores] # flip sign so green is drop
+            if 'outside' not in words:
+                continue
+            else:
+                print("outside found")
 
         cached_scores.append((words,deepcopy(normalized_scores)))
         # normalizing for vanilla grad

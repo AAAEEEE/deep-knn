@@ -8,9 +8,10 @@ from chainer import reporter
 embed_init = chainer.initializers.Uniform(.25)
 
 '''This file contains the model architectures used. Also
-contains code for getting the gradient of the output w.r.t to the 
+contains code for getting the gradient of the output w.r.t to the
 words to perform vanilla gradient interpretation. The gradient is also
 used to generate reduced examples as in (Feng et al. 2018)'''
+
 
 def sequence_embed(embed, xs, dropout=0.):
     """Efficient embedding function for variable-length sequences
@@ -134,12 +135,16 @@ class TextClassifier(chainer.Chain):
 
     # if using dknn, return prediction and activations for each layer
     # o/w, just return prediction
-    def predict(self, xs, softmax=False, argmax=False, dknn=False):
+    def predict(self, xs, softmax=False, argmax=False, dknn=False,
+                no_dropout=False):
         if dknn:
-            encodings, dknn_layers = self.encoder(xs, dknn=True)
+            encodings, dknn_layers = self.encoder(
+                    xs, dknn=True,
+                    no_dropout=no_dropout)
         else:
-            encodings = self.encoder(xs, dknn=False)
-        encodings = F.dropout(encodings, ratio=self.dropout)
+            encodings = self.encoder(xs, dknn=False, no_dropout=no_dropout)
+        if not no_dropout:
+            encodings = F.dropout(encodings, ratio=self.dropout)
         outputs = self.output(encodings)
         if softmax:
             outputs = F.softmax(outputs).data
@@ -167,8 +172,8 @@ class SNLIClassifier(chainer.Chain):
                 self.mlp = MLP(n_layers, encoder.out_units * 4, dropout)
                 self.output = L.Linear(encoder.out_units * 4, n_class)
 
-        self.dropout = dropout                
-        self.n_dknn_layers = self.mlp.n_dknn_layers + 1        
+        self.dropout = dropout
+        self.n_dknn_layers = self.mlp.n_dknn_layers + 1
 
     def __call__(self, xs, ys):
         concat_outputs = self.predict(xs)
@@ -183,9 +188,9 @@ class SNLIClassifier(chainer.Chain):
     def get_onehot_grad(self, xs, ys=None):
         if ys is None:
             with chainer.using_config('train', False):
-                ys = self.predict(xs, argmax=True)        
+                ys = self.predict(xs, argmax=True)
         u, exs_prem = self.encoder.get_grad(xs[0])
-        v, exs_hypo = self.encoder.get_grad(xs[1])        
+        v, exs_hypo = self.encoder.get_grad(xs[1])
         encodings = F.concat((u, v, F.absolute(u-v), u*v), axis=1)
         outputs = self.output(self.mlp(encodings, no_dropout=True))
         loss = F.softmax_cross_entropy(outputs, ys)
@@ -208,19 +213,22 @@ class SNLIClassifier(chainer.Chain):
             onehot_grad = [x[:l] for x, l in zip(onehot_grad, lengths)]
         return onehot_grad
 
-    def predict(self, xs, softmax=False, argmax=False, dknn=False):
-        dknn_layers = []    
-        u = self.encoder(xs[0], dknn=False)
-        v = self.encoder(xs[1], dknn=False)            
+    def predict(self, xs, softmax=False, argmax=False, dknn=False,
+                no_dropout=False):
+        dknn_layers = []
+        u = self.encoder(xs[0], dknn=False, no_dropout=no_dropout)
+        v = self.encoder(xs[1], dknn=False, no_dropout=no_dropout)
         # concatenate results as done in infersent
         encodings = F.concat((u, v, F.absolute(u-v), u*v), axis=1)
-        dknn_layers = [encodings]        
+        dknn_layers = [encodings]
 
         if dknn:
-            outputs, _dknn_layers = self.mlp(encodings, dknn=True)
+            outputs, _dknn_layers = self.mlp(
+                    encodings, dknn=True,
+                    no_dropout=no_dropout)
             dknn_layers = dknn_layers + _dknn_layers
         else:
-            outputs = self.mlp(encodings, dknn=False)
+            outputs = self.mlp(encodings, dknn=False, no_dropout=no_dropout)
 
         outputs = self.output(outputs)
         if softmax:
@@ -231,6 +239,7 @@ class SNLIClassifier(chainer.Chain):
             return outputs, dknn_layers
         else:
             return outputs
+
 
 class RNNEncoder(chainer.Chain):
     """A LSTM-RNN Encoder with Word Embedding.
@@ -262,15 +271,17 @@ class RNNEncoder(chainer.Chain):
         assert(last_h.shape == (self.n_layers, len(xs), self.out_units))
         return last_h[-1], exs
 
-    def __call__(self, xs, dknn=False):
-        exs = sequence_embed(self.embed, xs, self.dropout)
-        last_h, last_c, ys = self.encoder(None, None, exs)
+    def __call__(self, xs, dknn=False, no_dropout=False):
+        dropout = 0. if no_dropout else self.dropout
+        exs = sequence_embed(self.embed, xs, dropout)
+        last_h, last_c, ys = self.encoder(None, None, exs, no_dropout=no_dropout)
         assert(last_h.shape == (self.n_layers, len(xs), self.out_units))
         if dknn:
             # if doing deep knn, also return all the LSTM layers
             # last_h: n_layers * (batch_size, n_units)
             return last_h[-1], last_h
         return last_h[-1]
+
 
 class BiLSTMEncoder(chainer.Chain):
 
@@ -309,8 +320,9 @@ class BiLSTMEncoder(chainer.Chain):
         assert(last_h.shape == (self.n_layers, len(xs), 2 * self.out_units))
         return last_h[-1], exs
 
-    def __call__(self, xs, dknn=False):
-        exs = sequence_embed(self.embed, xs, self.dropout)
+    def __call__(self, xs, dknn=False, no_dropout=False):
+        dropout = 0. if no_dropout else self.dropout
+        exs = sequence_embed(self.embed, xs, dropout)
         fwd_last_h, _, ys = self.encoder_forward(None, None, exs)
         bwd_last_h, _, ys = self.encoder_backward(None, None, exs)
 
@@ -367,24 +379,24 @@ class CNNEncoder(chainer.Chain):
         h_w5 = F.max(self.cnn_w5(ex_block), axis=2)
         h = F.concat([h_w3, h_w4, h_w5], axis=1)
         h = F.relu(h)
-        # h = F.dropout(h, ratio=self.dropout)
         return self.mlp(h, no_dropout=True), ex_block
 
-    def __call__(self, xs, dknn=False):
+    def __call__(self, xs, dknn=False, no_dropout=False):
         x_block = chainer.dataset.convert.concat_examples(xs, padding=-1)
-        ex_block = block_embed(self.embed, x_block, self.dropout)
+        dropout = 0. if no_dropout else self.dropout
+        ex_block = block_embed(self.embed, x_block, dropout)
         h_w3 = F.max(self.cnn_w3(ex_block), axis=2)
         h_w4 = F.max(self.cnn_w4(ex_block), axis=2)
         h_w5 = F.max(self.cnn_w5(ex_block), axis=2)
         h = F.concat([h_w3, h_w4, h_w5], axis=1)
         h = F.relu(h)
-        h = F.dropout(h, ratio=self.dropout)
+        h = F.dropout(h, ratio=dropout)
         if dknn:
             # return the last CNN hidden followed by MLP hiddens
-            output, layers = self.mlp(h, dknn=True)
+            output, layers = self.mlp(h, dknn=True, no_dropout=no_dropout)
             return output, [F.squeeze(h, 2)] + layers
         else:
-            return self.mlp(h, dknn=False)
+            return self.mlp(h, dknn=False, no_dropout=no_dropout)
 
 
 class MLP(chainer.ChainList):
@@ -405,10 +417,10 @@ class MLP(chainer.ChainList):
         self.n_dknn_layers = n_layers
 
     def __call__(self, x, dknn=False, no_dropout=False):
-        ratio = 0. if no_dropout else self.dropout
+        dropout = 0. if no_dropout else self.dropout
         dknn_layers = []
         for i, link in enumerate(self.children()):
-            x = F.dropout(x, ratio=ratio)
+            x = F.dropout(x, ratio=dropout)
             x = F.relu(link(x))
             dknn_layers.append(x)
         if dknn:
@@ -445,7 +457,7 @@ class BOWEncoder(chainer.Chain):
         h = F.sum(ex_block, axis=2) / x_len
         return h, ex_block
 
-    def __call__(self, xs, dknn=False):
+    def __call__(self, xs, dknn=False, no_dropout=False):
         x_block = chainer.dataset.convert.concat_examples(xs, padding=-1)
         ex_block = block_embed(self.embed, x_block)
         x_len = self.xp.array([len(x) for x in xs], np.int32)[:, None, None]
@@ -483,10 +495,13 @@ class BOWMLPEncoder(chainer.Chain):
         output = self.mlp_encoder(h, no_dropout=True)
         return output, ex_block
 
-    def __call__(self, xs, dknn=False):
+    def __call__(self, xs, dknn=False, no_dropout=False):
         if dknn:
-            h, hs = self.bow_encoder(xs, dknn=True)
-            output, dknn_layers = self.mlp_encoder(h, dknn=True)
+            h, hs = self.bow_encoder(xs, dknn=True, no_dropout=no_dropout)
+            output, dknn_layers = self.mlp_encoder(
+                    h, dknn=True,
+                    no_dropout=no_dropout)
             return output, hs + dknn_layers
         else:
-            return self.mlp_encoder(self.bow_encoder(xs))
+            return self.mlp_encoder(self.bow_encoder(xs),
+                                    no_dropout=no_dropout)

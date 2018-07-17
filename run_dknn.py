@@ -20,6 +20,7 @@ from utils import setup_model
 '''contains all of the code to run Deep K Nearest Neighbors
 for any model'''
 
+
 class DkNN:
 
     def __init__(self, model, lsh=False):
@@ -325,7 +326,8 @@ def main():
     for test_batch in tqdm(test_iter, total=n_batches):
         data = converter(test_batch, device=args.gpu, with_label=True)
         text = data['xs']
-        knn_pred, knn_cred, knn_conf, reg_pred, reg_conf = dknn.predict(text, snli=use_snli)
+        knn_pred, knn_cred, knn_conf, reg_pred, reg_conf = dknn.predict(
+                text, snli=use_snli)
         label = [int(x) for x in data['ys']]
         total += len(label)
         n_knn_correct += sum(x == y for x, y in zip(knn_pred, label))

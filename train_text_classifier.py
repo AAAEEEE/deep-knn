@@ -17,8 +17,6 @@ import text_datasets
 
 ''' trains a classification model and saves it. Can then be used for
 regular inference or for dknn'''
-
-
 def create_parser():
     parser = argparse.ArgumentParser(
         description='Chainer example: Text Classification')
@@ -73,6 +71,8 @@ def main():
             args.dataset, char_based=args.char_based)
 
     train_idx = list(range(len(train)))
+
+    # calibration data is taken out of training for calibrated dknn / temperature scaling
     calibration_idx = sorted(random.sample(train_idx, 1000))
     calibration = [train[i] for i in calibration_idx]
     train = [x for i, x in enumerate(train) if i not in calibration_idx]

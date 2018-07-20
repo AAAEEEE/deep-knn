@@ -20,7 +20,6 @@ from utils import setup_model
 '''contains all of the code to run Deep K Nearest Neighbors
 for any model'''
 
-
 class DkNN:
 
     def __init__(self, model, lsh=False):
@@ -302,12 +301,11 @@ def main():
     calibration = [train[i] for i in calibration_idx]
     train = [x for i, x in enumerate(train) if i not in calibration_idx]
 
-    '''get dknn layers of training data'''
+    '''save dknn layers for training data'''
     dknn = DkNN(model, lsh=args.lsh)
     dknn.build(train, batch_size=setup['batchsize'],
                converter=converter, device=args.gpu)
 
-    # need to select calibration data more carefully
     '''calibrate the dknn credibility values'''
     dknn.calibrate(calibration, batch_size=setup['batchsize'],
                    converter=converter, device=args.gpu)

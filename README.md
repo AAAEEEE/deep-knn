@@ -1,8 +1,14 @@
 # Deep k-Nearest Neighbors and Interpretable NLP
 
-This repository contains the official code for the TODO VENUE paper. It contains code to run Deep k-Nearest Neighbors for a variety of models and architectures.
+This is the official code for the TODO VENUE paper, [INSERT TITLE](arxiv_link). 
 
-It also contains code for common interpretation techniques in natural language processing, such as leave one out and gradient based saliency maps. We additionally include code to produce visualizations like the ones seen on our paper's [supplementary website](https://sites.google.com/view/language-dknn/).
+This repository contains the code for:
+
+* Deep k-Nearest Neighbors for text classification models. Allows word vectors, character level models, etc.
+* Saliency map techniques for NLP, such as leave one out and gradient. Also includes our conformity leave one out method.
+* Create visualizations like the ones on our paper's [supplementary website](https://sites.google.com/view/language-dknn/).
+* Temperature scaling as described in [On Calibration of Modern Neural Networks](https://arxiv.org/abs/1706.04599)
+* SNLI interpretations
 
 ## Dependencies
 
@@ -21,7 +27,6 @@ If you want to do efficient nearest neighbor lookup:
 
 If you want to visualize saliency maps:
 * matplotlib
-
 
 
 This code is built off Chainers [text classification example](https://github.com/chainer/chainer/tree/master/examples/text_classification). See their documentation and code to understand the basic layout of our project. 
@@ -59,18 +64,28 @@ rm glove.840B.300d.zip
 
 Then pass the pretrained vectors in using the argument `--word_vectors glove.840B.300d.txt` when training a model using `train_text_classifier.py`
 
+## Temperature Scaling
+
+`scaling.py` contains the temperature scaling implementation.
+
+## Interpretations and Visualizations
+
+All of the code for generating interpretations using leave one out (conformity, confidence, or calibrated confidence) and first-order gradient is contained in `interpretations.py`. See the code for details on running with the desired settings. You should first train a model (see above), and then pass that in.
+
+The code for visualization is also present in `interpretations.py`.
+
 ## References
 
 Please consider citing [1](#dknn-language) if you found this code or our work beneficial to your research.
 
 ### TODO title
 
-[1] Eric Wallace and Shi Feng and Jordan Boyd-Graber, [*TODO title*](PAPER LINK HERE)
+[1] Eric Wallace, Shi Feng, and Jordan Boyd-Graber, [*TODO title*](PAPER LINK HERE)
 
 ```
-@article{TODO,
+@article{Wallace2018Neighbors,
   title={TODO},
-  author={TODO},
+  author={Eric Wallace and Shi Feng and Jordan Boyd-Graber},
   journal={TODO},  
   year={2018},  
 }

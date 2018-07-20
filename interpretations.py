@@ -14,14 +14,14 @@ from collections import defaultdict
 from copy import deepcopy
 
 import chainer
-import chainer.functions as F
+import chainer.functions as f
 
 from nlp_utils import convert_seq, convert_snli_seq
 from utils import setup_model
-from run_dknn import DkNN
+from run_dknn import dknn
 
+'''generate a batch of snli hypothesis, x, each entry with a different word left out'''
 def snli_flatten(x):
-    '''generate version of x with each token removed'''
     prem, hypo = x
     flatten_hypo = []
     flatten_prem = []
@@ -29,12 +29,10 @@ def snli_flatten(x):
         h = np.concatenate((hypo[:i], hypo[i+1:]), axis=0)
         flatten_hypo.append(h)
         flatten_prem.append(prem)
-
     return (flatten_prem, flatten_hypo)
 
-
+'''generate a batch of examples, x, each entry with a different word left out'''
 def flatten(x):
-    '''generate version of x with each token removed'''
     assert x.ndim == 1
     assert x.shape[0] > 1
     xs = []
@@ -42,27 +40,27 @@ def flatten(x):
         xs.append(np.concatenate((x[:i], x[i+1:]), axis=0))
     return xs
 
-
+''' performs leave one out interpretations. has multiple options for snli (paired inputs)
+or single input tasks. also has options for using dknn credibility or confidence'''
 def leave_one_out(dknn, converter,
                   x,
-                  snli=False,
-                  use_credibility=True):
+                  snli=false,
+                  use_credibility=true):
     gpu = dknn.model.xp == cp
     device = 0 if gpu else -1
-    inputs = converter([x], device=device, with_label=False)
-    ys, og_score, _, reg_pred, reg_conf = dknn.predict(inputs, snli=snli)
+    inputs = converter([x], device=device, with_label=false)  # setup gpu stuff
+    ys, og_score, _, reg_pred, reg_conf = dknn.predict(inputs, snli=snli)  # get original prediction
 
-    xs = snli_flatten(x) if snli else flatten(x)
+    xs = snli_flatten(x) if snli else flatten(x)    # batch of leave out one word
     batch_size = len(xs[0]) if snli else len(xs)
-    y = ys[0] if use_credibility else reg_pred[0]
+    y = ys[0] if use_credibility else reg_pred[0] # get prediction depending on mode
     ys = [np.array([y], dtype=np.int32) for _ in range(batch_size)]
     inputs = list(zip(xs[0], xs[1], ys)) if snli else list(zip(xs, ys))
     inputs = converter(inputs, device=device)
     xs = inputs['xs']
     ys = inputs['ys']
-
-    # rank
-    if use_credibility:
+    
+    if use_credibility:  # if dknn, then get scores of each input with words left out
         scores = dknn.get_credibility(xs, ys, use_snli=snli)
         og_score = og_score[0]
     else:
@@ -72,25 +70,25 @@ def leave_one_out(dknn, converter,
 
     return y, og_score, scores
 
-
+''' does gradient based interpretations'''
 def vanilla_grad(model, converter,
                  x,
-                 snli=False,
-                 use_credibility=False):
+                 snli=false,
+                 use_credibility=false):
     gpu = model.xp == cp
     device = 0 if gpu else -1
-    inputs = converter([x], device=device, with_label=False)    
+    inputs = converter([x], device=device, with_label=false)    
     if snli:
         warnings.warn('snli not supported for vanilla grad')
-    with chainer.using_config('train', False):
-        output = cp.asnumpy(model.predict(inputs, softmax=True))
+    with chainer.using_config('train', false):
+        output = cp.asnumpy(model.predict(inputs, softmax=true))
         y = np.argmax(output)
         original_score = np.max(output)
     onehot_grad = model.get_onehot_grad([x])[0].data.tolist()
     return y, original_score, onehot_grad
 
-
-def colorize(words, color_array, colors='RdBu'):
+''' generates saliency map visualizations as seen in the paper'''
+def colorize(words, color_array, colors='rdbu'):
     # words is a list of words
     # color_array is an array of numbers between 0 and 1
     cmap = plt.cm.get_cmap(colors)
@@ -106,14 +104,14 @@ def colorize(words, color_array, colors='RdBu'):
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.argumentparser()
     parser.add_argument('--gpu', '-g', type=int, default=0,
-                        help='GPU ID (negative value indicates CPU)')
-    parser.add_argument('--model-setup', required=True,
-                        help='Model setup dictionary.')
-    parser.add_argument('--lsh', action='store_true', default=False,
-                        help='If true, uses locally sensitive hashing \
-                              (with k=10 NN) for NN search.')
+                        help='gpu id (negative value indicates cpu)')
+    parser.add_argument('--model-setup', required=true,
+                        help='model setup dictionary.')
+    parser.add_argument('--lsh', action='store_true', default=false,
+                        help='if true, uses locally sensitive hashing \
+                              (with k=10 nn) for nn search.')
     parser.add_argument('--interp_method', type=str, default='dknn',
                         help='choose dknn, softmax, or grad')
 
@@ -122,14 +120,14 @@ def main():
     model, train, test, vocab, setup = setup_model(args)
     reverse_vocab = {v: k for k, v in vocab.items()}
 
-    use_snli = False
-    if setup['dataset'] == 'snli':
+    use_snli = false
+    if setup['dataset'] == 'snli':  # if snli, change colors and set flags
         converter = convert_snli_seq
-        colors = 'PiYG'
-        use_snli = True
+        colors = 'piyg'  
+        use_snli = true
     else:
         converter = convert_seq
-        colors = 'RdBu'
+        colors = 'rdbu'
 
     with open(os.path.join(setup['save_path'], 'calib.json')) as f:
         calibration_idx = json.load(f)
@@ -138,32 +136,27 @@ def main():
     train = [x for i, x in enumerate(train) if i not in calibration_idx]
 
     '''get dknn layers of training data'''
-    dknn = DkNN(model, lsh=args.lsh)
+    dknn = dknn(model, lsh=args.lsh)
     dknn.build(train, batch_size=setup['batchsize'],
                converter=converter, device=args.gpu)
 
-    # need to select calibration data more carefully
     '''calibrate the dknn credibility values'''
     dknn.calibrate(calibration, batch_size=setup['batchsize'],
                    converter=converter, device=args.gpu)
 
+    # opens up a html file for printing results. writes a table header to make it pretty
     with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
-        f.write('<table style="width:100%"> <tr> <th>Method</th> <th>Label</th> <th>Prediction</th> <th>Text</th> </tr>')
+        f.write('<table style="width:100%"> <tr> <th>method</th> <th>label</th> <th>prediction</th> <th>text</th> </tr>')
 
-    word_importance_scores = defaultdict(lambda: 0)
-    word_count = defaultdict(lambda: 0)
-    cached_scores = []
-
+    # setup word importance ranking function depending on mode
     if args.interp_method == 'dknn' or args.interp_method == 'softmax':
         ranker = partial(leave_one_out, dknn, converter)
     elif args.interp_method == 'grad':
         ranker = partial(vanilla_grad, model, converter)
-    else:
-        exit("Invalid Interpretation Method")
 
     use_cred = (args.interp_method == 'dknn')
 
-    for i in range(len(test)):
+    for i in range(len(test)):  # generate interpretations for the whole test set
         if use_snli:
             prem, hypo, label = test[i]
             x = (prem, hypo)
@@ -173,18 +166,18 @@ def main():
         label = label[0]    
 
         prediction, original_score, scores = ranker(
-                x, snli=use_snli, use_credibility=use_cred)
-        sorted_scores = sorted(list(enumerate(scores)), key=lambda x: x[1])
+                x, snli=use_snli, use_credibility=use_cred)  # get original score, and scores for all individual words 
+        sorted_scores = sorted(list(enumerate(scores)), key=lambda x: x[1]) # sort scores for each word
         print('label: {}'.format(label))
         print('prediction: {} ({})'.format(prediction, original_score))
 
-        if use_snli:
-            print('Premise: ' + ' '.join(reverse_vocab[w] for w in prem))
-            print('Hypothesis: ' + ' '.join(reverse_vocab[w] for w in hypo))
+        if use_snli:  # print out inputs
+            print('premise: ' + ' '.join(reverse_vocab[w] for w in prem))
+            print('hypothesis: ' + ' '.join(reverse_vocab[w] for w in hypo))
         else:
             print(' '.join(reverse_vocab[w] for w in text))
 
-        for idx, score in sorted_scores:
+        for idx, score in sorted_scores: # print word importances
             if use_snli:
                 print(score, reverse_vocab[hypo[idx]])
             else:
@@ -193,24 +186,27 @@ def main():
         print()
    
 
-        # get drop in score for l10, and flip sign for sentiment
+        # if using l10, get drop in score.
         normalized_scores = []
-        words = []
-        if not use_snli:
-            for idx, score in enumerate(scores):
-                if args.interp_method == 'dknn' or args.interp_method == 'softmax':
-                    normalized_scores.append(score - original_score)  # for l10 drop in score
-                else:
-                    normalized_scores.append(score)  # for grad its not a drop
-                if snli:
-                    words.append(reverse_vocab[hypo[idx]])
-                else:
-                    words.append(reverse_vocab[text[idx]])
-            if not snli and prediction == 1:  # flip sign if positive sentiment
-                normalized_scores = [-1 * n for n in normalized_scores]            
-
-        cached_scores.append((words,deepcopy(normalized_scores)))
+        words = []        
+        for idx, score in enumerate(scores):
+            if args.interp_method == 'dknn' or args.interp_method == 'softmax':
+                normalized_scores.append(score - original_score)  # for l10 drop in score
+            else:
+                normalized_scores.append(score)  # for grad its not a drop
+            if snli:
+                words.append(reverse_vocab[hypo[idx]])
+            else:
+                words.append(reverse_vocab[text[idx]])
+        # flip sign if positive sentiment. i.e., for positive class, drop in score = red highlight.
+        # for negative class, drop is score = blue highlight
+        if not snli and prediction == 1:  
+            normalized_scores = [-1 * n for n in normalized_scores]            
+        if snli:
+            normalized_scores = [-1 * n for n in normalized_scores] # flip sign so green is drop
+        
         # normalize scores across the words, doing positive and negatives seperately        
+        # final scores should be in range [0,1] 0 is dark red, 1 is dark blue. 0.5 is no highlight
         total_score_pos = 1e-6    # 1e-6 for case where all positive/neg scores are 0
         total_score_neg = 1e-6
         for idx, s in enumerate(normalized_scores):
@@ -223,61 +219,57 @@ def main():
                 normalized_scores[idx] = (s / total_score_neg) / 2   # / by 2 to get max of -0.5
             else:
                 normalized_scores[idx] = (s / total_score_pos) / 2
-
-        # tally individual word influence scores
-        for idx, norm_score in enumerate(normalized_scores):
-            word_importance_scores[words[idx]] = word_importance_scores[words[idx]] + norm_score
-            word_count[words[idx]] = word_count[words[idx]] + 1
-
         normalized_scores = [0.5 + n for n in normalized_scores]  # center scores
-        visual = colorize(words, normalized_scores, colors=colors)  # generate visualize
+        
+        visual = colorize(words, normalized_scores, colors=colors)  # generate saliency map colors
 
-        # plot snli results        
+        # setup html table row with snli results        
         if snli:        
             with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
                 if label == 0:
-                    f.write('Ground Truth Label: Entailment')
+                    f.write('ground truth label: entailment')
                 elif label == 1:
-                    f.write('Ground Truth Label: Neutral')
+                    f.write('ground truth label: neutral')
                 elif label == 2:
-                    f.write('Ground Truth Label: Contradiction')                
+                    f.write('ground truth label: contradiction')                
 
                 if prediction == 0:
-                    f.write("Prediction: Entailment ({})         ".format(original_score))
+                    f.write("prediction: entailment ({})         ".format(original_score))
                 elif prediction == 1:
-                    f.write("Prediction: Neutral ({})         ".format(original_score))
+                    f.write("prediction: neutral ({})         ".format(original_score))
                 elif prediction == 2:
-                    f.write("Prediction: Contradiction ({})         ".format(original_score))
+                    f.write("prediction: contradiction ({})         ".format(original_score))
 
                 f.write("<br>")
                 f.write(' '.join(reverse_vocab[w] for w in prem) + '<br>')
                 f.write(visual + "<br>")
                 f.write("<br>")
 
-        else: # plot sentiment results
+        # setup html table row with sentiment results        
+        else: 
             with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
                 f.write('<tr>')
                 f.write('<td>')
                 if args.interp_method == 'dknn':
-                    f.write('DkNN Leave-One-Out')
+                    f.write('conformity leave-one-out')
                 elif args.interp_method == 'softmax':
-                    f.write('Softmax Leave-One-Out')
+                    f.write('confidence leave-one-out')
                 else:
-                    f.write('Vanilla Gradient')
+                    f.write('vanilla gradient')
                 f.write('</td>')
 
                 f.write('<td>')
                 if label == 1:
-                    f.write('Label: Positive')
+                    f.write('label: positive')
                 else:
-                    f.write('Label: Negative')
+                    f.write('label: negative')
                 f.write('</td>')
 
                 f.write('<td>')
                 if prediction == 1:
-                    f.write("Prediction: Positive ({0:.2f})         ".format(original_score))
+                    f.write("prediction: positive ({0:.2f})         ".format(original_score))
                 else:
-                    f.write("Prediction: Negative ({0:.2f})         ".format(original_score))
+                    f.write("prediction: negative ({0:.2f})         ".format(original_score))
                 f.write('</td>')
                 
                 f.write('<td>')
@@ -285,35 +277,17 @@ def main():
                 f.write('</td>')
                 f.write('</tr>')
      
-            # print neighbors, not very interpretable for language
-            # neighbors = dknn.get_neighbors(x)
-            # print('neighbors:')
-            # f.write('&nbsp;&nbsp;&nbsp;&nbsp;Nearest Neighbor Sentences: <br>')
-            # for neighbor in neighbors[:5]:
-            #    curr_nearest_neighbor_input_sentence = '     '
-            #    for word in train[neighbor][0]:
-            #        curr_nearest_neighbor_input_sentence += reverse_vocab[word] + ' '
-            #    print(curr_nearest_neighbor_input_sentence)
-            #    f.write('&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' + curr_nearest_neighbor_input_sentence + '<br>')
-            # f.write('<br>')
+        # print nearest neighbor training data points for interpretation by analogy
+        # neighbors = dknn.get_neighbors(x)
+        # print('neighbors:')        
+        # for neighbor in neighbors[:5]:
+        #    curr_nearest_neighbor_input_sentence = '     '
+        #    for word in train[neighbor][0]:
+        #        curr_nearest_neighbor_input_sentence += reverse_vocab[word] + ' '
+        #    print(curr_nearest_neighbor_input_sentence)        
 
-
-    with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f: # end htmp table
+    with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f: # end html table
         f.write('</table>')
-
-    for word, total_score in list(word_count.items()):
-        if total_score < 5:  # 5 or higher to be counted
-            del word_count[word]
-            del word_importance_scores[word]
-
-    for word, total_score in word_importance_scores.items():
-        word_importance_scores[word] = word_importance_scores[word] / word_count[word]
-
-    sorted_by_value = sorted(word_importance_scores.items(), key=lambda kv: kv[1])
-    pickle.dump(sorted_by_value, open(args.interp_method + '_sorted.pkl','wb'))
-    print(sorted_by_value)
-
-    pickle.dump(cached_scores, open(args.interp_method + '_cached_scores.pkl','wb'))
 
 if __name__ == '__main__':
     main()

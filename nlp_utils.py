@@ -5,7 +5,6 @@ import numpy
 import chainer
 from chainer.backends import cuda
 
-
 def split_text(text, char_based=False):
     if char_based:
         return list(text)

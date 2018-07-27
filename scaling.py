@@ -8,11 +8,10 @@ import cupy as cp
 import chainer
 import chainer.functions as F
 
-
 from nlp_utils import convert_seq, convert_snli_seq
 from utils import setup_model
 
-
+''' Takes the logits and divides by a temperature parameter '''
 class TemperatureScaler(chainer.Link):
 
     def __init__(self):
@@ -20,13 +19,11 @@ class TemperatureScaler(chainer.Link):
         with self.init_scope():
             self.temperature = chainer.Parameter(
                     np.asarray([1.5], dtype=np.float32))
-            # self.temperature = chainer.Parameter(
-            #         chainer.initializers.One(), (1,))
 
     def __call__(self, logits):
         return logits / F.broadcast_to(self.temperature, logits.shape)
 
-
+''' A model with a temperature applied to its logits '''
 class ScaledModel(chainer.Chain):
 
     def __init__(self, model):
@@ -40,7 +37,9 @@ class ScaledModel(chainer.Chain):
     def predict(self, xs):
         return self.temperature(self.model.predict(xs, no_dropout=True))
 
-
+''' See "On Calibration of Modern Neural Networks for details". Defines the loss
+function for fitting the temperature parameter. See this code also
+https://github.com/gpleiss/temperature_scaling'''
 class ECELoss:
 
     def __init__(self, n_bins=15):
@@ -48,8 +47,7 @@ class ECELoss:
         self.bin_lowers = bin_boundaries[:-1]
         self.bin_uppers = bin_boundaries[1:]
 
-    def __call__(self, logits, labels):
-        # logits = sm.temperature(all_logits)
+    def __call__(self, logits, labels):        
         scores = cp.asnumpy(F.softmax(logits).data)
         labels = cp.asnumpy(labels.data)
         predictions = np.argmax(scores, axis=1)
@@ -102,7 +100,8 @@ def main():
             calibration, setup['batchsize'], repeat=False)
     eceloss = ECELoss()
 
-    for i in range(50):
+    num_epochs = 50
+    for i in range(num_epochs):
         calib_iter.reset()
         all_logits = []
         all_labels = []

@@ -1,1 +1,0 @@
-{"batchsize": 128, "epoch": 60, "gpu": 0, "out": "result", "unit": 300, "layer": 3, "dropout": 0.4, "combine_snli": false, "dataset": "stsa.binary", "model": "cnn", "char_based": true, "word_vectors": null, "vocab_path": "character/stsa.binary_cnn/vocab.json", "model_path": "character/stsa.binary_cnn/best_model.npz", "n_class": 2, "datetime": "2018-07-07 12:28:09.536672"}

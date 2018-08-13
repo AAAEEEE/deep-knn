@@ -78,10 +78,9 @@ The code for visualization is also present in `interpretations.py`.
 
 Please consider citing [1](#dknn-language) if you found this code or our work beneficial to your research.
 
-### TODO title
+### Interpreting Neural Networks with Nearest Neighbors
 
-[1] Eric Wallace, Shi Feng, and Jordan Boyd-Graber, [*Interpreting Neural Networks with Nearest Neighbors
-*](PAPER LINK HERE)
+[1] Eric Wallace, Shi Feng, and Jordan Boyd-Graber, [Interpreting Neural Networks with Nearest Neighbors](arxiv_link). 
 
 ```
 @article{Wallace2018Neighbors,

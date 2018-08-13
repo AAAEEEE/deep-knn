@@ -1,10 +1,10 @@
 # Deep k-Nearest Neighbors and Interpretable NLP
 
-This is the official code for the TODO VENUE paper, [INSERT TITLE](arxiv_link). 
+This is the official code for the 2018 EMNLP Interpretability Workshop paper, [Interpreting Neural Networks with Nearest Neighbors](arxiv_link). 
 
 This repository contains the code for:
 
-* Deep k-Nearest Neighbors for text classification models. Allows word vectors, character level models, etc.
+* Deep k-Nearest Neighbors for text classification models. Allows pretrained word vectors, character level models, etc. on a number of datasets
 * Saliency map techniques for NLP, such as leave one out and gradient. Also includes our conformity leave one out method.
 * Create visualizations like the ones on our paper's [supplementary website](https://sites.google.com/view/language-dknn/).
 * Temperature scaling as described in [On Calibration of Modern Neural Networks](https://arxiv.org/abs/1706.04599)
@@ -80,13 +80,14 @@ Please consider citing [1](#dknn-language) if you found this code or our work be
 
 ### TODO title
 
-[1] Eric Wallace, Shi Feng, and Jordan Boyd-Graber, [*TODO title*](PAPER LINK HERE)
+[1] Eric Wallace, Shi Feng, and Jordan Boyd-Graber, [*Interpreting Neural Networks with Nearest Neighbors
+*](PAPER LINK HERE)
 
 ```
 @article{Wallace2018Neighbors,
-  title={TODO},
+  title={Interpreting Neural Networks with Nearest Neighbors},
   author={Eric Wallace and Shi Feng and Jordan Boyd-Graber},
-  journal={TODO},  
+  journal={EMNLP 2018 Workshop on Analyzing and Interpreting Neural Networks for NLP},  
   year={2018},  
 }
 ```

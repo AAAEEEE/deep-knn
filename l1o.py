@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import argparse
 import numpy as np
-#import cupy as cp
+import cupy as cp
 import warnings
 from functools import partial
 import matplotlib
@@ -33,12 +33,12 @@ def snli_flatten(x):
     # if cp.get_array_module(x) == cp:
     #     x = cp.asnumpy(x)
     reduced_hypo = []
-    prem = []    
+    prem = []
     for i in range(len(x[1][0])):
         reduced_hypo.append(np.concatenate((x[1][0][:i], x[1][0][i+1:]), axis=0))
         prem.append(x[0][0])
 
-    xs = (prem, reduced_hypo)        
+    xs = (prem, reduced_hypo)
     return xs
 
 
@@ -46,11 +46,10 @@ def flatten(x):
     '''generate version of x with each token removed'''
     assert x.ndim == 1
     assert x.shape[0] > 1
-    # if cp.get_array_module(x) == cp:
-    #     x = cp.asnumpy(x)
-    xs = []    
+    xp = cp.get_array_module(x)
+    xs = []
     for i in range(x.shape[0]):
-        xs.append(np.concatenate((x[:i], x[i+1:]), axis=0))
+        xs.append(xp.concatenate((x[:i], x[i+1:]), axis=0))
     return xs
 
 
@@ -60,11 +59,11 @@ def leave_one_out(dknn, x, bigrams=False, snli=False, use_credibility=True):
     ys, original_score, _, reg_pred, reg_conf = dknn.predict(x, snli=snli)
     if not snli:
         x = x[0]
-    
+
     if use_credibility:
         y = ys[0]
     else:
-        y = reg_pred[0]    
+        y = reg_pred[0]
 
     # gpu = cp.get_array_module(x) == cp
     # x = cp.asnumpy(x)
@@ -79,10 +78,10 @@ def leave_one_out(dknn, x, bigrams=False, snli=False, use_credibility=True):
         ys = [int(y) for _ in xs]
     # if gpu:
     #     xs = [cp.asarray(x) for x in xs]
-    
+
     # rank
     if use_credibility:
-        scores = dknn.get_credibility(xs, ys, use_snli=snli) 
+        scores = dknn.get_credibility(xs, ys, use_snli=snli)
         original_score = original_score[0]
         # scores = []
         # for input_x in xs:
@@ -176,19 +175,19 @@ def main():
         exit("Method")
 
     for i in range(len(test)):
-        if use_snli:            
-            prem, hypo, label = test[i]            
-            x = ([prem], [hypo])                        
+        if use_snli:
+            prem, hypo, label = test[i]
+            x = ([prem], [hypo])
         else:
             text, label = test[i]
-            x = cp.asarray(text) #text   
+            x = cp.asarray(text) #text
 
         if args.interp_method == 'dknn':
             use_cred = True
         else:
             use_cred = False
 
-        prediction, original_score, scores = ranker(x, snli=use_snli, use_credibility=use_cred)            
+        prediction, original_score, scores = ranker(x, snli=use_snli, use_credibility=use_cred)
         sorted_scores = sorted(list(enumerate(scores)), key=lambda x: x[1])
         print('label: {}'.format(label[0]))
         print('prediction: {} ({})'.format(prediction, original_score))
@@ -198,12 +197,12 @@ def main():
             print('Hypothesis: ' + ' '.join(reverse_vocab[w] for w in hypo))
         else:
             print(' '.join(reverse_vocab[w] for w in text))
-        
+
         for idx, score in sorted_scores:
             if use_snli:
                 print(score, reverse_vocab[hypo[idx]])
             else:
-                print(score, reverse_vocab[text[idx]])                
+                print(score, reverse_vocab[text[idx]])
         # print()
         # # bigrams
         # scores = ranker(x, y, bigrams=True)
@@ -216,8 +215,8 @@ def main():
 
         normalized_scores = []
         words = []
-        # plot sentiment results visualize results in heatmap        
-        if not use_snli:            
+        # plot sentiment results visualize results in heatmap
+        if not use_snli:
             for idx, score in enumerate(scores):
                 if args.interp_method == 'dknn' or args.interp_method == 'softmax':
                     normalized_scores.append(score - original_score)  # for l10 drop in score
@@ -228,13 +227,13 @@ def main():
                 normalized_scores = [-1 * n for n in normalized_scores]
 
         # plot snli results visualize results in heatmap
-        if use_snli:            
+        if use_snli:
             for idx, score in enumerate(scores):
                 if args.interp_method == 'dknn' or args.interp_method == 'softmax':
                     normalized_scores.append(score - original_score)  # for l10 drop in score
                 else:
                     normalized_scores.append(score)  # for grad its not a drop
-                words.append(reverse_vocab[hypo[idx]])    
+                words.append(reverse_vocab[hypo[idx]])
             normalized_scores = [-1 * n for n in normalized_scores] # flip sign so green is drop
 
 
@@ -291,13 +290,13 @@ def main():
         #         f.write("Prediction: Negative ({0:.2f})         ".format(original_score))
         #     f.write('</td>')
 
-        #     f.write('<td>') 
+        #     f.write('<td>')
         #     f.write(visual)
         #     f.write('</td>')
-    
+
         #     f.write('</tr>')
 
-        # plot snli results   
+        # plot snli results
         visual = colorize(words, normalized_scores, colors = colors)
         with open(setup['dataset'] + '_' + setup['model'] + '_colorize.html', 'a') as f:
             if label == 0:
@@ -316,7 +315,7 @@ def main():
             elif prediction == 2:
                 f.write("Prediction: Contradiction ({})         ".format(original_score))
             else:
-                eixt("Prediction Label not found")                     
+                eixt("Prediction Label not found")
             f.write("<br>")
             f.write(' '.join(reverse_vocab[w] for w in prem) + '<br>')
             f.write(visual + "<br>")

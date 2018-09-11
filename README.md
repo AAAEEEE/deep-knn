@@ -1,6 +1,6 @@
 # Deep k-Nearest Neighbors and Interpretable NLP
 
-This is the official code for the 2018 EMNLP Interpretability Workshop paper, [Interpreting Neural Networks with Nearest Neighbors](arxiv_link). 
+This is the official code for the 2018 EMNLP Interpretability Workshop paper, [Interpreting Neural Networks with Nearest Neighbors](https://arxiv.org/abs/1809.02847). 
 
 This repository contains the code for:
 
@@ -80,7 +80,7 @@ Please consider citing [1](#dknn-language) if you found this code or our work be
 
 ### Interpreting Neural Networks with Nearest Neighbors
 
-[1] Eric Wallace, Shi Feng, and Jordan Boyd-Graber, [Interpreting Neural Networks with Nearest Neighbors](arxiv_link). 
+[1] Eric Wallace, Shi Feng, and Jordan Boyd-Graber, [Interpreting Neural Networks with Nearest Neighbors](https://arxiv.org/abs/1809.02847). 
 
 ```
 @article{Wallace2018Neighbors,

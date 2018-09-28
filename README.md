@@ -86,7 +86,7 @@ Please consider citing [1](#dknn-language) if you found this code or our work be
 @article{Wallace2018Neighbors,
   title={Interpreting Neural Networks with Nearest Neighbors},
   author={Eric Wallace and Shi Feng and Jordan Boyd-Graber},
-  journal={EMNLP 2018 Workshop on Analyzing and Interpreting Neural Networks for NLP},  
+  journal={arXiv preprint arXiv:1809.02847},  
   year={2018},  
 }
 ```
